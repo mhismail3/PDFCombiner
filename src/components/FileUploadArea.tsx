@@ -1,5 +1,8 @@
-import React, { useRef, useState, useCallback, KeyboardEvent } from 'react';
-import { Button, Text } from './ui';
+import React, { useState, useRef, useCallback, KeyboardEvent } from 'react';
+import { useAppDispatch } from '../store/hooks';
+import { showNotification } from '../store/slices/uiSlice';
+import { FileValidator } from '../utils/fileValidator';
+import { Button } from './ui';
 
 interface FileUploadAreaProps {
   onFilesSelected: (files: FileList) => void;
@@ -8,6 +11,7 @@ interface FileUploadAreaProps {
   isUploading?: boolean;
   disabled?: boolean;
   className?: string;
+  maxFileSize?: number; // in bytes, default to 500MB
 }
 
 const FileUploadArea: React.FC<FileUploadAreaProps> = ({
@@ -17,12 +21,14 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   isUploading = false,
   disabled = false,
   className = '',
+  maxFileSize = 500 * 1024 * 1024, // 500MB default
 }) => {
   const [isDragActive, setIsDragActive] = useState(false);
   const [isDragInvalid, setIsDragInvalid] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropzoneRef = useRef<HTMLDivElement>(null);
+  const dispatch = useAppDispatch();
 
   // Handle click on the browse files button
   const handleBrowseClick = useCallback(() => {
@@ -31,16 +37,89 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
     }
   }, [disabled]);
 
+  // Validate files before passing to the parent component
+  const validateAndHandleFiles = useCallback(
+    async (files: FileList) => {
+      if (!files.length) return;
+
+      // Filter for PDF files and check size
+      const validFiles: File[] = [];
+      const invalidFiles: { file: File; reason: string }[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Check file size
+        if (file.size > maxFileSize) {
+          invalidFiles.push({
+            file,
+            reason: `File "${file.name}" exceeds the maximum size limit of ${maxFileSize / (1024 * 1024)}MB.`
+          });
+          continue;
+        }
+
+        // Validate file type and integrity
+        const validationResult = await FileValidator.validatePdfFile(file);
+        if (!validationResult.isValid) {
+          invalidFiles.push({
+            file,
+            reason: validationResult.errorMessage || 'Invalid file'
+          });
+          continue;
+        }
+
+        validFiles.push(file);
+      }
+
+      // Show error notification if there are invalid files
+      if (invalidFiles.length > 0) {
+        const totalFiles = files.length;
+        
+        if (invalidFiles.length === totalFiles) {
+          // All files are invalid
+          dispatch(
+            showNotification({
+              message: totalFiles === 1 
+                ? invalidFiles[0].reason 
+                : `All ${totalFiles} files are invalid. Please upload only valid PDF files.`,
+              type: 'error',
+            })
+          );
+          return;
+        } else {
+          // Some files are invalid
+          dispatch(
+            showNotification({
+              message: `${invalidFiles.length} of ${totalFiles} files are invalid and will be skipped.`,
+              type: 'warning',
+            })
+          );
+        }
+      }
+
+      // If we have valid files, create a new FileList-like object
+      if (validFiles.length > 0) {
+        // Create a DataTransfer object to create a new FileList
+        const dataTransfer = new DataTransfer();
+        validFiles.forEach(file => dataTransfer.items.add(file));
+        
+        // Call the onFilesSelected callback with the valid files
+        onFilesSelected(dataTransfer.files);
+      }
+    },
+    [onFilesSelected, maxFileSize, dispatch]
+  );
+
   // Handle file input change
   const handleFileInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       if (!disabled && event.target.files && event.target.files.length > 0) {
-        onFilesSelected(event.target.files);
+        validateAndHandleFiles(event.target.files);
         // Reset the input value so the same file can be uploaded again if needed
         event.target.value = '';
       }
     },
-    [disabled, onFilesSelected]
+    [disabled, validateAndHandleFiles]
   );
 
   // Handle keyboard events for accessibility
@@ -79,18 +158,18 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       e.preventDefault();
       e.stopPropagation();
       
-      if (disabled || !isDragActive) return;
+      if (disabled) return;
       
-      // Check if any of the dragged items are not accepted file types
-      if (acceptedFileTypes) {
-        const hasInvalidFile = Array.from(e.dataTransfer.items).some(item => {
-          return item.kind === 'file' && !acceptedFileTypes.includes(item.type);
-        });
-        
-        setIsDragInvalid(hasInvalidFile);
-      }
+      // Check if the dragged items are valid
+      const isValid = Array.from(e.dataTransfer.items).some(
+        item => item.kind === 'file' && 
+               (item.type === acceptedFileTypes || 
+                acceptedFileTypes.includes(item.type.split('/')[1]))
+      );
+      
+      setIsDragInvalid(!isValid && !multiple);
     },
-    [disabled, isDragActive, acceptedFileTypes]
+    [disabled, acceptedFileTypes, multiple]
   );
 
   const handleDragLeave = useCallback(
@@ -98,8 +177,8 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       e.preventDefault();
       e.stopPropagation();
       
-      // Only consider it a leave if we're leaving the dropzone element
-      if (e.currentTarget === e.target) {
+      // Check if we're leaving the drop zone
+      if (e.currentTarget === dropzoneRef.current && !e.currentTarget.contains(e.relatedTarget as Node)) {
         setIsDragActive(false);
         setIsDragInvalid(false);
       }
@@ -117,68 +196,65 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       
       if (disabled) return;
       
-      const droppedFiles = e.dataTransfer.files;
-      if (droppedFiles.length > 0) {
-        onFilesSelected(droppedFiles);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        validateAndHandleFiles(e.dataTransfer.files);
       }
     },
-    [disabled, onFilesSelected]
+    [disabled, validateAndHandleFiles]
   );
 
-  // Get the appropriate border color based on component state
-  const getBorderColor = () => {
-    if (isDragInvalid) return 'border-red-500 dark:border-red-400';
-    if (isDragActive) return 'border-blue-500 dark:border-blue-400';
-    if (isFocused) return 'border-blue-400 dark:border-blue-300';
-    if (disabled) return 'border-gray-200 dark:border-gray-800';
-    return 'border-gray-300 dark:border-gray-700';
-  };
-
-  // Get the appropriate background color based on component state
-  const getBackgroundColor = () => {
-    if (isDragInvalid) return 'bg-red-50 dark:bg-red-900 dark:bg-opacity-20';
-    if (disabled) return 'bg-gray-50 dark:bg-gray-900';
-    return 'bg-gray-100 dark:bg-gray-800';
-  };
-
-  // Get the appropriate message based on component state
-  const getMessage = () => {
-    if (isDragInvalid) return 'Invalid file type. Please use PDF files only.';
-    if (isDragActive) return 'Drop your files here';
-    if (disabled) return 'File upload is currently disabled';
-    if (isUploading) return 'Uploading files...';
-    return 'Drag and drop PDF files here';
+  // Generate classnames based on state
+  const getAreaClassNames = () => {
+    let classes = 
+      'border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer transition-colors duration-200 ';
+    
+    if (isDragActive && !isDragInvalid) {
+      classes += 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 ';
+    } else if (isDragInvalid) {
+      classes += 'border-red-400 bg-red-50 dark:bg-red-900/20 ';
+    } else if (isFocused) {
+      classes += 'border-blue-300 bg-blue-50/50 dark:bg-blue-900/10 ';
+    } else {
+      classes += 'border-gray-300 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-600 dark:hover:border-blue-500 dark:hover:bg-blue-900/10 ';
+    }
+    
+    if (disabled) {
+      classes += 'opacity-60 cursor-not-allowed ';
+    }
+    
+    return classes + className;
   };
 
   return (
-    <div
-      ref={dropzoneRef}
-      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${getBorderColor()} ${getBackgroundColor()} ${
-        disabled ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
-      } ${className}`}
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      onClick={handleBrowseClick}
-      onKeyDown={handleKeyDown}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
-      tabIndex={disabled ? -1 : 0}
-      role="button"
-      aria-label="Upload PDF files"
-      aria-describedby="fileUploadDescription"
-      aria-disabled={disabled}
-    >
-      <div className="flex flex-col items-center justify-center py-4">
+    <div className="w-full">
+      <div
+        ref={dropzoneRef}
+        className={getAreaClassNames()}
+        onClick={handleBrowseClick}
+        onKeyDown={handleKeyDown}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        tabIndex={disabled ? -1 : 0}
+        role="button"
+        aria-label="Upload files"
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={acceptedFileTypes}
+          multiple={multiple}
+          onChange={handleFileInputChange}
+          className="hidden"
+          disabled={disabled || isUploading}
+          aria-hidden="true"
+        />
+        
         <svg
-          className={`w-12 h-12 mb-3 ${
-            isDragInvalid
-              ? 'text-red-500 dark:text-red-400'
-              : isDragActive
-              ? 'text-blue-500 dark:text-blue-400'
-              : 'text-gray-400 dark:text-gray-500'
-          }`}
+          className="w-10 h-10 mb-3 text-gray-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -192,46 +268,24 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           ></path>
         </svg>
         
-        <Text className="mb-2" id="fileUploadDescription">
-          {getMessage()}
-        </Text>
+        <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+          <span className="font-semibold">Click to upload</span> or drag and drop
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {multiple ? 'PDF files only (max 500MB per file)' : 'PDF file only (max 500MB)'}
+        </p>
         
-        {!disabled && !isUploading && (
-          <>
-            <p className="text-gray-500 dark:text-gray-400">or</p>
-            <Button
-              variant="primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleBrowseClick();
-              }}
-              className="mt-4"
-              disabled={disabled || isUploading}
-              size="small"
-            >
-              Browse Files
-            </Button>
-          </>
-        )}
-        
-        {isUploading && (
-          <div className="mt-4 w-full max-w-xs bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-            <div className="bg-blue-500 h-2.5 rounded-full w-1/2"></div>
-          </div>
-        )}
+        <Button
+          variant="primary"
+          size="small"
+          className="mt-4"
+          onClick={handleBrowseClick}
+          disabled={disabled || isUploading}
+          isLoading={isUploading}
+        >
+          {isUploading ? 'Uploading...' : 'Browse Files'}
+        </Button>
       </div>
-      
-      <input
-        type="file"
-        id="fileInput"
-        ref={fileInputRef}
-        onChange={handleFileInputChange}
-        multiple={multiple}
-        accept={acceptedFileTypes}
-        disabled={disabled || isUploading}
-        className="hidden"
-        aria-hidden="true"
-      />
     </div>
   );
 };

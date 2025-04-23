@@ -10,12 +10,7 @@ import {
 } from '../store/slices/pdfSlice';
 import { showNotification } from '../store/slices/uiSlice';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  isPdfFile,
-  fileToArrayBuffer,
-  generatePDFThumbnail,
-  getPDFPageCount,
-} from '../utils/pdfUtils';
+import { fileToArrayBuffer, generatePDFThumbnail, getPDFPageCount } from '../utils/pdfUtils';
 import PDFFileList from '../components/PDFFileList';
 import FileUploadArea from '../components/FileUploadArea';
 import { Card, Button, ProgressBar } from '../components/ui';
@@ -83,30 +78,16 @@ const HomePage: React.FC = () => {
     async (uploadedFiles: FileList) => {
       if (uploadedFiles.length === 0) return;
 
-      // Filter for PDF files
-      const pdfFiles = Array.from(uploadedFiles).filter(isPdfFile);
-
-      if (pdfFiles.length === 0) {
-        setError('Please upload only PDF files.');
-        dispatch(
-          showNotification({
-            message: 'Please upload only PDF files.',
-            type: 'error',
-          })
-        );
-        return;
-      }
-
       try {
         // Set uploading state
         dispatch(setIsUploading(true));
 
         // Process each PDF file
-        const totalFiles = pdfFiles.length;
+        const totalFiles = uploadedFiles.length;
         const newFiles = [];
 
         for (let i = 0; i < totalFiles; i++) {
-          const file = pdfFiles[i];
+          const file = uploadedFiles[i];
 
           // Update progress
           dispatch(setUploadProgress(Math.round((i / totalFiles) * 100)));

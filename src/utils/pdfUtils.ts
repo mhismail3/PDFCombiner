@@ -2,14 +2,16 @@
  * Utility functions for handling PDF files
  */
 
-import { PDFDocument, PDFPage } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist';
+import { ValidationResult } from './fileValidator';
 
 // Initialize PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 /**
  * Check if a file is a PDF
+ * @deprecated Use FileValidator.validateFileType instead
  */
 export const isPdfFile = (file: File): boolean => {
   return file.type === 'application/pdf';
@@ -28,43 +30,40 @@ export const fileToArrayBuffer = (file: File): Promise<ArrayBuffer> => {
 };
 
 /**
- * Generate a thumbnail preview for a PDF
+ * Generate a thumbnail for a PDF file
  */
-export const generatePDFThumbnail = async (
-  pdfData: ArrayBuffer,
-  pageNumber = 1,
-  scale = 0.5
-): Promise<string> => {
+export const generatePDFThumbnail = async (pdfData: ArrayBuffer): Promise<string> => {
   try {
-    // Load the PDF file
+    // Load the PDF document
     const loadingTask = pdfjs.getDocument({ data: pdfData });
     const pdf = await loadingTask.promise;
 
     // Get the first page
-    const page = await pdf.getPage(pageNumber);
+    const page = await pdf.getPage(1);
 
-    // Set the scale for the thumbnail
-    const viewport = page.getViewport({ scale });
+    // Set the scale for the thumbnail (adjust as needed)
+    const viewport = page.getViewport({ scale: 0.5 });
 
-    // Create a canvas element
+    // Create a canvas for rendering
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
+
     if (!context) {
-      throw new Error('Unable to create canvas context');
+      throw new Error('Failed to get canvas context');
     }
 
-    // Set canvas dimensions to match the viewport
+    // Set canvas dimensions
     canvas.width = viewport.width;
     canvas.height = viewport.height;
 
-    // Render the PDF page to the canvas
+    // Render the page to the canvas
     await page.render({
       canvasContext: context,
       viewport,
     }).promise;
 
-    // Convert canvas to base64 data URL
-    return canvas.toDataURL('image/png');
+    // Convert canvas to base64 image
+    return canvas.toDataURL('image/jpeg', 0.7);
   } catch (error) {
     console.error('Error generating PDF thumbnail:', error);
     throw error;
@@ -82,6 +81,35 @@ export const getPDFPageCount = async (pdfData: ArrayBuffer): Promise<number> => 
   } catch (error) {
     console.error('Error getting PDF page count:', error);
     throw error;
+  }
+};
+
+/**
+ * Check if the PDF is valid and can be opened
+ */
+export const validatePDFContent = async (pdfData: ArrayBuffer): Promise<ValidationResult> => {
+  try {
+    const loadingTask = pdfjs.getDocument({ data: pdfData });
+    const pdf = await loadingTask.promise;
+
+    if (pdf.numPages < 1) {
+      return {
+        isValid: false,
+        errorCode: 'EMPTY_PDF',
+        errorMessage: 'The PDF file does not contain any pages.',
+      };
+    }
+
+    return { isValid: true };
+  } catch (error) {
+    return {
+      isValid: false,
+      errorCode: 'INVALID_PDF_CONTENT',
+      errorMessage:
+        error instanceof Error
+          ? `Invalid PDF content: ${error.message}`
+          : 'Could not parse PDF content. The file may be corrupted or password protected.',
+    };
   }
 };
 
@@ -203,5 +231,28 @@ export const extractPDFPages = async (
   } catch (error) {
     console.error('Error extracting PDF pages:', error);
     throw error;
+  }
+};
+
+/**
+ * Check if the PDF is password protected
+ */
+export const isPDFPasswordProtected = async (pdfData: ArrayBuffer): Promise<boolean> => {
+  try {
+    // Attempt to load the PDF document with PDFLib
+    await PDFDocument.load(pdfData, {
+      ignoreEncryption: false,
+    });
+    
+    // If we get here without an error, the PDF is not encrypted or we have the password
+    return false;
+  } catch (error) {
+    // Check if the error is related to encryption
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return (
+      errorMessage.includes('encrypt') ||
+      errorMessage.includes('password') ||
+      errorMessage.includes('permission')
+    );
   }
 };

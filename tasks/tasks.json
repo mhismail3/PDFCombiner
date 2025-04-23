@@ -160,7 +160,66 @@
       ],
       "priority": "high",
       "details": "Create validation logic to ensure only PDF files are accepted. Implement file size validation with 500MB maximum limit. Add error handling for invalid files with user-friendly error messages. Create a notification system for displaying validation errors and other alerts. Implement recovery paths for users to correct errors (remove invalid files, retry uploads). Add progress indicators for file processing operations.",
-      "testStrategy": "Test with valid and invalid file types. Test with files exceeding size limits. Verify error messages are clear and actionable. Ensure users can recover from error states without reloading the application."
+      "testStrategy": "Test with valid and invalid file types. Test with files exceeding size limits. Verify error messages are clear and actionable. Ensure users can recover from error states without reloading the application.",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement file type validation for PDF files",
+          "description": "Create validation logic to check if uploaded files are PDF documents by examining file extensions and MIME types",
+          "dependencies": [],
+          "details": "1. Create a FileValidator class/module with a validateFileType method\n2. Implement checks for both file extension (.pdf) and MIME type (application/pdf)\n3. Use the File API to access file metadata\n4. Return validation results with specific error codes/messages for invalid types\n5. Test with various file types including valid PDFs and non-PDF files\n6. Add unit tests to verify validation logic works correctly",
+          "status": "pending",
+          "parentTaskId": 4
+        },
+        {
+          "id": 2,
+          "title": "Add file size validation with 500MB limit",
+          "description": "Implement size validation to ensure uploaded files don't exceed the 500MB maximum limit",
+          "dependencies": [
+            1
+          ],
+          "details": "1. Extend the FileValidator class with a validateFileSize method\n2. Implement size checking logic using File.size property (in bytes)\n3. Convert the 500MB limit to bytes (500 * 1024 * 1024)\n4. Return validation results with specific error codes/messages for oversized files\n5. Test with files of various sizes including edge cases (exactly 500MB, slightly over)\n6. Add unit tests to verify size validation works correctly\n7. Integrate with the existing file type validation to create a complete validation pipeline",
+          "status": "pending",
+          "parentTaskId": 4
+        },
+        {
+          "id": 3,
+          "title": "Create notification system for validation errors",
+          "description": "Implement a reusable notification system to display validation errors and other alerts to users",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "1. Create a NotificationService class/module to manage notifications\n2. Implement methods for different notification types (error, warning, info, success)\n3. Design notification UI components with appropriate styling for each type\n4. Add support for dismissible notifications with timeout options\n5. Implement notification queuing for multiple simultaneous messages\n6. Test notifications with different message types and lengths\n7. Ensure notifications are accessible (screen readers, keyboard navigation)\n8. Add unit tests for notification logic and integration tests for UI components",
+          "status": "pending",
+          "parentTaskId": 4
+        },
+        {
+          "id": 4,
+          "title": "Implement error recovery paths for invalid uploads",
+          "description": "Create mechanisms for users to correct validation errors by removing invalid files and retrying uploads",
+          "dependencies": [
+            1,
+            2,
+            3
+          ],
+          "details": "1. Add a file removal feature to delete invalid files from the upload queue\n2. Implement a retry mechanism for failed uploads\n3. Create clear error states in the UI that indicate which files failed validation\n4. Add actionable error messages that suggest how to fix the issues\n5. Implement file replacement functionality to swap invalid files\n6. Ensure the UI clearly shows which files are valid/invalid\n7. Test the recovery flows with various error scenarios\n8. Add integration tests to verify the complete error recovery process",
+          "status": "pending",
+          "parentTaskId": 4
+        },
+        {
+          "id": 5,
+          "title": "Add progress indicators for file processing",
+          "description": "Implement visual feedback for file upload and processing operations to improve user experience",
+          "dependencies": [
+            3,
+            4
+          ],
+          "details": "1. Create a ProgressIndicator component for showing upload/processing status\n2. Implement progress tracking using upload events (if using XMLHttpRequest) or fetch with ReadableStream\n3. Add different states for the indicator: queued, validating, uploading, processing, complete, error\n4. Implement a progress bar with percentage completion\n5. Add estimated time remaining calculation based on upload speed\n6. Ensure progress indicators update in real-time\n7. Make progress indicators accessible with appropriate ARIA attributes\n8. Test with various file sizes and network conditions\n9. Add integration tests to verify progress tracking accuracy",
+          "status": "pending",
+          "parentTaskId": 4
+        }
+      ]
     },
     {
       "id": 5,

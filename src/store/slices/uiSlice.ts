@@ -6,7 +6,7 @@ interface UiState {
   notification: {
     show: boolean;
     message: string;
-    type: 'success' | 'error' | 'info' | null;
+    type: 'success' | 'error' | 'info' | 'warning' | null;
   };
 }
 
@@ -38,7 +38,7 @@ export const uiSlice = createSlice({
     },
     showNotification: (
       state,
-      action: PayloadAction<{ message: string; type: 'success' | 'error' | 'info' }>
+      action: PayloadAction<{ message: string; type: 'success' | 'error' | 'info' | 'warning' }>
     ) => {
       state.notification = {
         show: true,

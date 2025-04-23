@@ -9,3 +9,68 @@ Create validation logic to ensure only PDF files are accepted. Implement file si
 
 # Test Strategy:
 Test with valid and invalid file types. Test with files exceeding size limits. Verify error messages are clear and actionable. Ensure users can recover from error states without reloading the application.
+
+# Subtasks:
+## 1. Implement file type validation for PDF files [pending]
+### Dependencies: None
+### Description: Create validation logic to check if uploaded files are PDF documents by examining file extensions and MIME types
+### Details:
+1. Create a FileValidator class/module with a validateFileType method
+2. Implement checks for both file extension (.pdf) and MIME type (application/pdf)
+3. Use the File API to access file metadata
+4. Return validation results with specific error codes/messages for invalid types
+5. Test with various file types including valid PDFs and non-PDF files
+6. Add unit tests to verify validation logic works correctly
+
+## 2. Add file size validation with 500MB limit [pending]
+### Dependencies: 4.1
+### Description: Implement size validation to ensure uploaded files don't exceed the 500MB maximum limit
+### Details:
+1. Extend the FileValidator class with a validateFileSize method
+2. Implement size checking logic using File.size property (in bytes)
+3. Convert the 500MB limit to bytes (500 * 1024 * 1024)
+4. Return validation results with specific error codes/messages for oversized files
+5. Test with files of various sizes including edge cases (exactly 500MB, slightly over)
+6. Add unit tests to verify size validation works correctly
+7. Integrate with the existing file type validation to create a complete validation pipeline
+
+## 3. Create notification system for validation errors [pending]
+### Dependencies: 4.1, 4.2
+### Description: Implement a reusable notification system to display validation errors and other alerts to users
+### Details:
+1. Create a NotificationService class/module to manage notifications
+2. Implement methods for different notification types (error, warning, info, success)
+3. Design notification UI components with appropriate styling for each type
+4. Add support for dismissible notifications with timeout options
+5. Implement notification queuing for multiple simultaneous messages
+6. Test notifications with different message types and lengths
+7. Ensure notifications are accessible (screen readers, keyboard navigation)
+8. Add unit tests for notification logic and integration tests for UI components
+
+## 4. Implement error recovery paths for invalid uploads [pending]
+### Dependencies: 4.1, 4.2, 4.3
+### Description: Create mechanisms for users to correct validation errors by removing invalid files and retrying uploads
+### Details:
+1. Add a file removal feature to delete invalid files from the upload queue
+2. Implement a retry mechanism for failed uploads
+3. Create clear error states in the UI that indicate which files failed validation
+4. Add actionable error messages that suggest how to fix the issues
+5. Implement file replacement functionality to swap invalid files
+6. Ensure the UI clearly shows which files are valid/invalid
+7. Test the recovery flows with various error scenarios
+8. Add integration tests to verify the complete error recovery process
+
+## 5. Add progress indicators for file processing [pending]
+### Dependencies: 4.3, 4.4
+### Description: Implement visual feedback for file upload and processing operations to improve user experience
+### Details:
+1. Create a ProgressIndicator component for showing upload/processing status
+2. Implement progress tracking using upload events (if using XMLHttpRequest) or fetch with ReadableStream
+3. Add different states for the indicator: queued, validating, uploading, processing, complete, error
+4. Implement a progress bar with percentage completion
+5. Add estimated time remaining calculation based on upload speed
+6. Ensure progress indicators update in real-time
+7. Make progress indicators accessible with appropriate ARIA attributes
+8. Test with various file sizes and network conditions
+9. Add integration tests to verify progress tracking accuracy
+
