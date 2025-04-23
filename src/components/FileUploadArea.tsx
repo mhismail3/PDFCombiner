@@ -1,9 +1,8 @@
 import React, { useState, useRef, useCallback, KeyboardEvent } from 'react';
-import { useAppDispatch } from '../store/hooks';
-import { showNotification } from '../store/slices/uiSlice';
 import { FileValidator } from '../utils/fileValidator';
 import { formatFileSize } from '../utils/pdfUtils';
 import { Button } from './ui';
+import { useValidationNotifications } from '../services/notificationService';
 
 interface FileUploadAreaProps {
   onFilesSelected: (files: FileList) => void;
@@ -29,7 +28,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   const [isFocused, setIsFocused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropzoneRef = useRef<HTMLDivElement>(null);
-  const dispatch = useAppDispatch();
+  const notifications = useValidationNotifications();
 
   // Handle click on the browse files button
   const handleBrowseClick = useCallback(() => {
@@ -45,7 +44,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
 
       // Filter for PDF files and check size
       const validFiles: File[] = [];
-      const invalidFiles: { file: File; reason: string; errorCode?: string }[] = [];
+      const invalidFiles: { file: File; validationResult: any }[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -56,8 +55,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         if (!validationResult.isValid) {
           invalidFiles.push({
             file,
-            reason: validationResult.errorMessage || 'Invalid file',
-            errorCode: validationResult.errorCode
+            validationResult
           });
           continue;
         }
@@ -73,23 +71,18 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           // All files are invalid
           if (totalFiles === 1) {
             // If only one file was uploaded, show specific error message
-            const { reason, errorCode } = invalidFiles[0];
-            
-            // Determine the notification type based on error code
-            const notificationType = errorCode === 'FILE_TOO_LARGE' ? 'warning' : 'error';
-            
-            dispatch(
-              showNotification({
-                message: reason,
-                type: notificationType,
-              })
-            );
+            const { validationResult } = invalidFiles[0];
+            notifications.showValidationError(validationResult);
           } else {
             // Multiple files, all invalid
-            // Categorize errors to provide better feedback
-            const sizeErrors = invalidFiles.filter(f => f.errorCode === 'FILE_TOO_LARGE').length;
+            // Group similar errors to provide more meaningful feedback
+            const sizeErrors = invalidFiles.filter(f => 
+              f.validationResult.errorCode === 'FILE_TOO_LARGE'
+            ).length;
+            
             const typeErrors = invalidFiles.filter(f => 
-              f.errorCode === 'INVALID_FILE_TYPE' || f.errorCode === 'INVALID_FILE_EXTENSION'
+              f.validationResult.errorCode === 'INVALID_FILE_TYPE' || 
+              f.validationResult.errorCode === 'INVALID_FILE_EXTENSION'
             ).length;
             
             let message = `All ${totalFiles} files are invalid.`;
@@ -102,38 +95,12 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
               message += ` ${typeErrors} ${typeErrors === 1 ? 'file is not' : 'files are not'} in PDF format.`;
             }
             
-            dispatch(
-              showNotification({
-                message,
-                type: 'error',
-              })
-            );
+            notifications.showError(message, 'Invalid Files');
           }
           return;
         } else {
-          // Some files are invalid
-          // Categorize errors to provide better feedback
-          const sizeErrors = invalidFiles.filter(f => f.errorCode === 'FILE_TOO_LARGE').length;
-          const typeErrors = invalidFiles.filter(f => 
-            f.errorCode === 'INVALID_FILE_TYPE' || f.errorCode === 'INVALID_FILE_EXTENSION'
-          ).length;
-          
-          let message = `${invalidFiles.length} of ${totalFiles} files are invalid and will be skipped.`;
-          
-          if (sizeErrors > 0) {
-            message += ` ${sizeErrors} ${sizeErrors === 1 ? 'file exceeds' : 'files exceed'} the size limit.`;
-          }
-          
-          if (typeErrors > 0) {
-            message += ` ${typeErrors} ${typeErrors === 1 ? 'file is not' : 'files are not'} in PDF format.`;
-          }
-          
-          dispatch(
-            showNotification({
-              message,
-              type: 'warning',
-            })
-          );
+          // Some files are valid, some are invalid - show a partial success message
+          notifications.showPartialUploadSuccess(validFiles.length, invalidFiles.length);
         }
       }
 
@@ -144,18 +111,13 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         validFiles.forEach(file => dataTransfer.items.add(file));
         
         // Show success notification
-        dispatch(
-          showNotification({
-            message: `${validFiles.length} ${validFiles.length === 1 ? 'file' : 'files'} ready for processing.`,
-            type: 'success',
-          })
-        );
+        notifications.showFileUploadSuccess(validFiles.length);
         
         // Call the onFilesSelected callback with the valid files
         onFilesSelected(dataTransfer.files);
       }
     },
-    [onFilesSelected, maxFileSize, dispatch]
+    [onFilesSelected, maxFileSize, notifications]
   );
 
   // Handle file input change
@@ -206,18 +168,24 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       e.preventDefault();
       e.stopPropagation();
       
-      if (disabled) return;
+      if (disabled || isDragActive) return;
       
-      // Check if the dragged items are valid
-      const isValid = Array.from(e.dataTransfer.items).some(
-        item => item.kind === 'file' && 
-               (item.type === acceptedFileTypes || 
-                acceptedFileTypes.includes(item.type.split('/')[1]))
-      );
+      // Check if the dragged items contain valid file types
+      const containsValidFiles = Array.from(e.dataTransfer.items).some(item => {
+        return item.kind === 'file' && 
+               (acceptedFileTypes === '*' || 
+                acceptedFileTypes.split(',').includes(item.type));
+      });
       
-      setIsDragInvalid(!isValid && !multiple);
+      if (containsValidFiles) {
+        setIsDragActive(true);
+        setIsDragInvalid(false);
+      } else {
+        setIsDragActive(true);
+        setIsDragInvalid(true);
+      }
     },
-    [disabled, acceptedFileTypes, multiple]
+    [disabled, isDragActive, acceptedFileTypes]
   );
 
   const handleDragLeave = useCallback(
@@ -225,7 +193,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       e.preventDefault();
       e.stopPropagation();
       
-      // Check if we're leaving the drop zone
+      // Only consider it a leave if we're leaving the dropzone element
       if (e.currentTarget === dropzoneRef.current && !e.currentTarget.contains(e.relatedTarget as Node)) {
         setIsDragActive(false);
         setIsDragInvalid(false);
@@ -245,101 +213,187 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       if (disabled) return;
       
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        validateAndHandleFiles(e.dataTransfer.files);
+        // If multiple is false, only take the first file
+        if (!multiple && e.dataTransfer.files.length > 1) {
+          // Create a new FileList with just the first file
+          const firstFile = e.dataTransfer.files[0];
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(firstFile);
+          
+          validateAndHandleFiles(dataTransfer.files);
+          
+          // Show a notification that only the first file was accepted
+          notifications.showInfo(
+            'Multiple files were dropped, but only the first file was accepted since multiple selection is disabled.',
+            'Single File Mode'
+          );
+        } else {
+          validateAndHandleFiles(e.dataTransfer.files);
+        }
       }
     },
-    [disabled, validateAndHandleFiles]
+    [disabled, multiple, validateAndHandleFiles, notifications]
   );
 
-  // Generate classnames based on state
+  // Handle focus and blur for keyboard accessibility
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+  }, []);
+
+  const handleBlur = useCallback(() => {
+    setIsFocused(false);
+  }, []);
+
+  // Get area class names based on component state
   const getAreaClassNames = () => {
-    let classes = 
-      'border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer transition-colors duration-200 ';
-    
-    if (isDragActive && !isDragInvalid) {
-      classes += 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 ';
-    } else if (isDragInvalid) {
-      classes += 'border-red-400 bg-red-50 dark:bg-red-900/20 ';
-    } else if (isFocused) {
-      classes += 'border-blue-300 bg-blue-50/50 dark:bg-blue-900/10 ';
+    let classes = `
+      relative flex flex-col items-center justify-center p-8 border-2 border-dashed 
+      rounded-lg transition-all duration-200 ease-in-out
+      ${className}
+    `;
+
+    if (isFocused) {
+      classes += ' border-blue-500 bg-blue-50 dark:bg-blue-900/20';
+    } else if (isDragActive) {
+      if (isDragInvalid) {
+        classes += ' border-red-500 bg-red-50 dark:bg-red-900/20';
+      } else {
+        classes += ' border-green-500 bg-green-50 dark:bg-green-900/20';
+      }
+    } else if (disabled) {
+      classes += ' border-gray-300 bg-gray-100 cursor-not-allowed opacity-75 dark:border-gray-600 dark:bg-gray-800';
     } else {
-      classes += 'border-gray-300 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-600 dark:hover:border-blue-500 dark:hover:bg-blue-900/10 ';
+      classes += ' border-gray-300 hover:border-blue-400 hover:bg-blue-50 dark:border-gray-600 dark:hover:border-blue-500 dark:hover:bg-blue-900/10';
     }
-    
-    if (disabled) {
-      classes += 'opacity-60 cursor-not-allowed ';
-    }
-    
-    return classes + className;
+
+    return classes;
   };
 
   return (
-    <div className="w-full">
-      <div
-        ref={dropzoneRef}
-        className={getAreaClassNames()}
-        onClick={handleBrowseClick}
-        onKeyDown={handleKeyDown}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        tabIndex={disabled ? -1 : 0}
-        role="button"
-        aria-label="Upload files"
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={acceptedFileTypes}
-          multiple={multiple}
-          onChange={handleFileInputChange}
-          className="hidden"
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-        
-        <div className="flex flex-col items-center justify-center">
-          <svg
-            className="w-12 h-12 text-gray-400 mb-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-            />
-          </svg>
-          
-          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
-            <span className="font-semibold">Click to upload</span> or drag and drop
-          </p>
-          
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            PDF files only (max {formatFileSize(maxFileSize)})
-          </p>
-          
-          {multiple && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              You can select multiple files
-            </p>
+    <div
+      ref={dropzoneRef}
+      className={getAreaClassNames()}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onKeyDown={handleKeyDown}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      tabIndex={disabled ? -1 : 0}
+      role="button"
+      aria-label={`Upload files${disabled ? ' (disabled)' : ''}`}
+    >
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept={acceptedFileTypes}
+        multiple={multiple}
+        onChange={handleFileInputChange}
+        disabled={disabled || isUploading}
+      />
+
+      {/* Dropzone content */}
+      <div className="flex flex-col items-center space-y-4">
+        {/* Icon based on state */}
+        <div className="text-4xl">
+          {isUploading ? (
+            <svg
+              className="animate-spin h-12 w-12 text-blue-500"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+          ) : isDragActive ? (
+            isDragInvalid ? (
+              <svg
+                className="h-12 w-12 text-red-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="h-12 w-12 text-green-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 13H9V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L7 9.414V13H5.5z" />
+                <path d="M9 13h2v5a1 1 0 11-2 0v-5z" />
+              </svg>
+            )
+          ) : (
+            <svg
+              className="h-12 w-12 text-gray-400"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                fillRule="evenodd"
+                d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
           )}
-          
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={handleBrowseClick}
-            disabled={disabled || isUploading}
-            className="mt-4"
-          >
-            Browse Files
-          </Button>
+        </div>
+
+        {/* Text based on state */}
+        <div className="text-center">
+          {isUploading ? (
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              Uploading files, please wait...
+            </p>
+          ) : isDragActive ? (
+            isDragInvalid ? (
+              <p className="text-sm text-red-700 dark:text-red-300">
+                Invalid file type! Only PDF files are accepted.
+              </p>
+            ) : (
+              <p className="text-sm text-green-700 dark:text-green-300">
+                Drop your files here
+              </p>
+            )
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                Drag & drop your PDF files here, or
+              </p>
+              <Button
+                onClick={handleBrowseClick}
+                disabled={disabled || isUploading}
+                className="w-full"
+              >
+                Browse files
+              </Button>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                PDF files only, up to {formatFileSize(maxFileSize)}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

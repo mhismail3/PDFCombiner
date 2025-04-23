@@ -34,7 +34,7 @@ Test with valid and invalid file types. Test with files exceeding size limits. V
 6. Add unit tests to verify size validation works correctly
 7. Integrate with the existing file type validation to create a complete validation pipeline
 
-## 3. Create notification system for validation errors [pending]
+## 3. Create notification system for validation errors [done]
 ### Dependencies: 4.1, 4.2
 ### Description: Implement a reusable notification system to display validation errors and other alerts to users
 ### Details:

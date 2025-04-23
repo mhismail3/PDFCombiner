@@ -11,20 +11,23 @@ import NotFoundPage from './pages/NotFoundPage';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
+import NotificationProvider from './components/ui/NotificationProvider';
 
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<HomePage />} />
-              <Route path="about" element={<AboutPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+        <NotificationProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route index element={<HomePage />} />
+                <Route path="about" element={<AboutPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </NotificationProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
