@@ -6,6 +6,7 @@ import './App.css';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import NotFoundPage from './pages/NotFoundPage';
+import PDFPreviewPage from './pages/PDFPreviewPage';
 
 // Components
 import Layout from './components/Layout';
@@ -23,6 +24,7 @@ function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<HomePage />} />
                 <Route path="about" element={<AboutPage />} />
+                <Route path="preview" element={<PDFPreviewPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>

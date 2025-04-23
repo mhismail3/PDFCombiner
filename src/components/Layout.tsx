@@ -37,6 +37,14 @@ const Layout: React.FC = () => {
                   Home
                 </NavLink>
                 <NavLink
+                  to="/preview"
+                  className={({ isActive }) =>
+                    isActive ? 'font-semibold border-b-2 border-white' : 'hover:text-blue-200'
+                  }
+                >
+                  Preview
+                </NavLink>
+                <NavLink
                   to="/about"
                   className={({ isActive }) =>
                     isActive ? 'font-semibold border-b-2 border-white' : 'hover:text-blue-200'
