@@ -1,0 +1,11 @@
+# Task ID: 4
+# Title: Add file validation and error handling
+# Status: pending
+# Dependencies: 3
+# Priority: high
+# Description: Implement validation for uploaded files including type checking, size limits, and appropriate error messaging.
+# Details:
+Create validation logic to ensure only PDF files are accepted. Implement file size validation with 500MB maximum limit. Add error handling for invalid files with user-friendly error messages. Create a notification system for displaying validation errors and other alerts. Implement recovery paths for users to correct errors (remove invalid files, retry uploads). Add progress indicators for file processing operations.
+
+# Test Strategy:
+Test with valid and invalid file types. Test with files exceeding size limits. Verify error messages are clear and actionable. Ensure users can recover from error states without reloading the application.

@@ -1,0 +1,75 @@
+# Task ID: 9
+# Title: Implement client-side PDF merging with PDF-lib.js
+# Status: pending
+# Dependencies: 8
+# Priority: high
+# Description: Develop the core PDF combination functionality using PDF-lib.js to merge selected pages into a single document.
+# Details:
+Integrate PDF-lib.js or similar library for PDF manipulation. Implement functions to extract pages from source PDFs based on user selection. Create merge functionality to combine selected pages in the specified order. Add basic PDF optimization and compression. Implement progress tracking for the merge operation. Use Web Workers to perform merging in a background thread. Handle errors during the merge process with appropriate user feedback.
+
+# Test Strategy:
+Test merging various combinations of PDFs with different characteristics. Verify the merged PDF contains all selected pages in the correct order. Test with edge cases like password-protected PDFs or unusual formats. Measure performance with different file sizes.
+
+# Subtasks:
+## 1. Set up PDF-lib.js and create basic PDF loading functionality [pending]
+### Dependencies: None
+### Description: Integrate the PDF-lib.js library into the project and implement functions to load PDF documents from files.
+### Details:
+1. Install PDF-lib.js via npm or include via CDN
+2. Create a utility module for PDF operations
+3. Implement a function to load a PDF from a File object using PDF-lib's PDFDocument.load()
+4. Add error handling for invalid or corrupted PDF files
+5. Create a simple test to verify PDF loading works correctly
+6. Document the API for the PDF loading functionality
+7. Test with various PDF files to ensure compatibility
+
+## 2. Implement page extraction functionality [pending]
+### Dependencies: 9.1
+### Description: Create functions to extract specific pages from loaded PDF documents based on user selection.
+### Details:
+1. Extend the PDF utility module with page extraction capabilities
+2. Implement a function to create a new PDFDocument containing only selected pages
+3. Add support for page range selection (e.g., '1-3,5,7-9')
+4. Create a function to preview extracted pages (thumbnail generation)
+5. Implement caching to avoid re-extracting the same pages
+6. Test with PDFs of varying sizes and complexities
+7. Ensure proper memory management for large documents
+
+## 3. Create PDF merging core functionality [pending]
+### Dependencies: 9.1, 9.2
+### Description: Develop the core functionality to merge multiple PDF pages from different sources into a single document.
+### Details:
+1. Implement a merge function that takes an array of {sourceDocument, pageNumbers} objects
+2. Use PDF-lib.js to copy pages from source documents to a new target document
+3. Maintain the specified order of pages during merging
+4. Add basic metadata to the merged document (creation date, software info)
+5. Implement a function to save the merged document as a Blob/File
+6. Create unit tests for the merge functionality
+7. Test with edge cases (empty selection, very large documents, etc.)
+
+## 4. Implement Web Worker for background processing [pending]
+### Dependencies: 9.3
+### Description: Move the PDF merging process to a Web Worker to prevent UI blocking during complex merge operations.
+### Details:
+1. Create a dedicated Web Worker file for PDF operations
+2. Move the merge functionality to the worker
+3. Implement message passing between the main thread and worker
+4. Add progress tracking and reporting from the worker to the main thread
+5. Implement cancellation of in-progress merge operations
+6. Handle errors in the worker and communicate them back to the main thread
+7. Test with large documents to verify performance improvements
+8. Add fallback for browsers that don't support Web Workers
+
+## 5. Add PDF optimization and user feedback [pending]
+### Dependencies: 9.3, 9.4
+### Description: Implement PDF optimization options and comprehensive user feedback during the merge process.
+### Details:
+1. Add compression options for the merged PDF (using PDF-lib's compression features)
+2. Implement image quality settings for optimization
+3. Create a progress UI component that shows merge status
+4. Add detailed error messages and recovery suggestions
+5. Implement success notifications with file size information
+6. Add options to download or preview the merged document
+7. Test optimization with various document types
+8. Create end-to-end tests for the complete merge workflow
+

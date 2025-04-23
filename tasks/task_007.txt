@@ -1,0 +1,11 @@
+# Task ID: 7
+# Title: Create document reordering interface
+# Status: pending
+# Dependencies: 6
+# Priority: medium
+# Description: Implement drag-and-drop functionality for reordering entire documents in the combination sequence.
+# Details:
+Implement drag-and-drop functionality for document reordering using React DnD or similar library. Create visual indicators for drag operations and drop targets. Maintain document order state that will be used for the final PDF combination. Add keyboard shortcuts for moving documents up/down in the sequence. Ensure drag operations work smoothly with appropriate animations and feedback. Implement undo/redo functionality for reordering operations.
+
+# Test Strategy:
+Test drag-and-drop reordering with mouse and touch interactions. Verify keyboard shortcuts work correctly. Ensure the final document order is correctly maintained in state. Test undo/redo functionality for reordering operations.

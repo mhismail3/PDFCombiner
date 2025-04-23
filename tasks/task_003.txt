@@ -1,0 +1,11 @@
+# Task ID: 3
+# Title: Implement drag-drop and file browser upload
+# Status: done
+# Dependencies: 2
+# Priority: high
+# Description: Create the file upload functionality with both drag-and-drop interface and traditional file browser selection.
+# Details:
+Implement a drag-and-drop zone using React-Dropzone or similar library. Add file browser upload option with multi-file selection support. Create visual feedback for drag events (hover states, drop indicators). Handle file selection events and maintain uploaded files in application state. Implement basic file queue management for multiple uploads. Ensure the upload interface is accessible via keyboard navigation and screen readers.
+
+# Test Strategy:
+Test uploading files via both drag-drop and file browser methods. Verify multiple file selection works correctly. Test keyboard accessibility of the upload interface. Ensure proper visual feedback during drag operations.

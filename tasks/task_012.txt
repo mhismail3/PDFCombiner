@@ -1,0 +1,11 @@
+# Task ID: 12
+# Title: Add serverless fallback for large files
+# Status: pending
+# Dependencies: 11
+# Priority: medium
+# Description: Implement a serverless function fallback for processing PDFs that exceed client-side capabilities (>50MB).
+# Details:
+Set up AWS Lambda function (or similar serverless platform) for PDF processing. Create secure file upload mechanism to temporary cloud storage. Implement size detection to automatically route large files to serverless processing. Develop progress monitoring for server-side operations. Implement secure download links for processed files. Add appropriate error handling and retry mechanisms. Ensure all server-side operations maintain user privacy and security.
+
+# Test Strategy:
+Test with files exceeding the 50MB client-side limit. Verify automatic routing to serverless processing. Test error scenarios and recovery mechanisms. Verify security of the upload/download process. Measure performance of serverless processing compared to client-side.
