@@ -154,7 +154,7 @@
       "id": 4,
       "title": "Add file validation and error handling",
       "description": "Implement validation for uploaded files including type checking, size limits, and appropriate error messaging.",
-      "status": "pending",
+      "status": "done",
       "dependencies": [
         3
       ],
@@ -216,7 +216,7 @@
             4
           ],
           "details": "1. Create a ProgressIndicator component for showing upload/processing status\n2. Implement progress tracking using upload events (if using XMLHttpRequest) or fetch with ReadableStream\n3. Add different states for the indicator: queued, validating, uploading, processing, complete, error\n4. Implement a progress bar with percentage completion\n5. Add estimated time remaining calculation based on upload speed\n6. Ensure progress indicators update in real-time\n7. Make progress indicators accessible with appropriate ARIA attributes\n8. Test with various file sizes and network conditions\n9. Add integration tests to verify progress tracking accuracy",
-          "status": "pending",
+          "status": "done",
           "parentTaskId": 4
         }
       ]

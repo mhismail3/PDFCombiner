@@ -71,7 +71,7 @@ describe('FileItem', () => {
     render(<FileItem file={file} onRemove={mockOnRemove} onRetry={mockOnRetry} />);
     
     expect(screen.getByText('test-file.pdf')).toBeInTheDocument();
-    expect(screen.getByText('Processing...')).toBeInTheDocument();
+    expect(screen.getByText('Processing')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /remove/i })).toBeInTheDocument();
     
     // Retry button should not be visible for loading status

@@ -34,23 +34,58 @@ const HomePage: React.FC = () => {
         try {
           if (!file.data) continue;
 
-          // Get page count
-          const pageCount = await getPDFPageCount(file.data);
-
-          // Generate thumbnail
-          const thumbnail = await generatePDFThumbnail(file.data);
-
-          // Update file with thumbnail and page count
+          // Update file to show processing started
           dispatch(
             updatePDFFile({
               id: file.id,
               updates: {
-                preview: thumbnail,
-                pageCount,
-                status: 'ready',
+                processingProgress: 10,
               },
             })
           );
+
+          // Get page count
+          const pageCount = await getPDFPageCount(file.data);
+          
+          // Update progress after page count is determined
+          dispatch(
+            updatePDFFile({
+              id: file.id,
+              updates: {
+                processingProgress: 50,
+                pageCount,
+              },
+            })
+          );
+
+          // Generate thumbnail
+          const thumbnail = await generatePDFThumbnail(file.data);
+
+          // Update progress after thumbnail is generated
+          dispatch(
+            updatePDFFile({
+              id: file.id,
+              updates: {
+                processingProgress: 90,
+              },
+            })
+          );
+
+          // Short delay to show the progress completing
+          setTimeout(() => {
+            // Update file with thumbnail and page count
+            dispatch(
+              updatePDFFile({
+                id: file.id,
+                updates: {
+                  preview: thumbnail,
+                  pageCount,
+                  status: 'ready',
+                  processingProgress: 100,
+                },
+              })
+            );
+          }, 300);
         } catch (err) {
           // Log error details without using console.log directly
           const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -61,6 +96,7 @@ const HomePage: React.FC = () => {
               updates: {
                 status: 'error',
                 error: errorMessage,
+                processingProgress: 0,
               },
             })
           );
@@ -114,6 +150,8 @@ const HomePage: React.FC = () => {
             preview: null, // We'll generate thumbnails in the useEffect
             pageCount: 0, // We'll get this from PDF.js in the useEffect
             status: 'loading' as const,
+            selected: true, // Default to selected
+            processingProgress: 0, // Start at 0% progress
           });
         }
 

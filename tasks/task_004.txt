@@ -1,6 +1,6 @@
 # Task ID: 4
 # Title: Add file validation and error handling
-# Status: pending
+# Status: done
 # Dependencies: 3
 # Priority: high
 # Description: Implement validation for uploaded files including type checking, size limits, and appropriate error messaging.
@@ -60,7 +60,7 @@ Test with valid and invalid file types. Test with files exceeding size limits. V
 7. Test the recovery flows with various error scenarios
 8. Add integration tests to verify the complete error recovery process
 
-## 5. Add progress indicators for file processing [pending]
+## 5. Add progress indicators for file processing [done]
 ### Dependencies: 4.3, 4.4
 ### Description: Implement visual feedback for file upload and processing operations to improve user experience
 ### Details:

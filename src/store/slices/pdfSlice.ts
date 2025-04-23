@@ -13,6 +13,7 @@ export interface PDFFile {
   selected: boolean; // Whether this file is selected for operations
   status: 'loading' | 'ready' | 'error';
   error?: string;
+  processingProgress?: number; // Track progress percentage during processing
 }
 
 export interface PDFState {
