@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { fileToArrayBuffer, generatePDFThumbnail, getPDFPageCount } from '../utils/pdfUtils';
 import PDFFileList from '../components/PDFFileList';
 import FileUploadArea from '../components/FileUploadArea';
+import PDFDocumentPreview from '../components/PDFDocumentPreview';
 import { Button, ProgressBar } from '../components/ui';
 import Card from '../components/ui/Card';
 import { useValidationNotifications } from '../services/notificationService';
@@ -253,7 +254,7 @@ const HomePage: React.FC = () => {
   );
 
   // Handle clearing all files
-  const handleClearAllFiles = useCallback(() => {
+  const handleClearFiles = useCallback(() => {
     if (files.length === 0) return;
     
     dispatch(clearPDFFiles());
@@ -263,92 +264,85 @@ const HomePage: React.FC = () => {
     );
   }, [files, dispatch, notifications]);
 
+  // Render document preview section
+  const renderDocumentPreview = () => {
+    const readyFiles = files.filter(file => file.status === 'ready');
+    
+    if (readyFiles.length === 0) return null;
+    
+    return (
+      <Card className="mb-6" title="Document Preview">
+        <PDFDocumentPreview 
+          pdfFiles={readyFiles}
+          onFileSelect={(fileId, selected) => {
+            dispatch(
+              updatePDFFile({
+                id: fileId,
+                updates: {
+                  selected,
+                },
+              })
+            );
+          }}
+          selectedFiles={readyFiles.filter(f => f.selected).map(f => f.id)}
+        />
+      </Card>
+    );
+  };
+
   return (
-    <div className="text-center">
-      <h2 className="text-2xl font-bold mb-4 dark:text-white">Welcome to PDF Combiner</h2>
-      <p className="mb-6 dark:text-gray-300">
-        Upload your PDF files to combine them into a single document.
-      </p>
-
-      {/* Error message */}
-      {error && (
-        <div
-          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
-          role="alert"
-        >
-          <span className="block sm:inline">{error}</span>
-        </div>
-      )}
-
-      {/* File upload card */}
-      <Card className="mb-8">
-        <FileUploadArea
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold text-center mb-8">PDF Combiner</h1>
+      
+      <Card className="mb-6" title="Upload PDF Files">
+        <FileUploadArea 
           onFilesSelected={handleFileUpload}
-          acceptedFileTypes="application/pdf"
-          multiple={true}
+          acceptedFileTypes=".pdf,application/pdf"
+          maxFileSize={500 * 1024 * 1024} // 500MB
           isUploading={isUploading}
           disabled={isUploading}
+          multiple={true}
         />
-
-        {isUploading && (
-          <div className="mt-4">
-            <ProgressBar
-              value={uploadProgress}
-              max={100}
-              size="sm"
-              showValue
-              label="Uploading files..."
-            />
-          </div>
-        )}
-
-        {files.length === 0 && !isUploading && (
-          <div className="mt-4 text-gray-500 dark:text-gray-400">
-            <p>Uploaded PDF files will appear here</p>
-          </div>
-        )}
       </Card>
-
-      {/* PDF File List Component */}
+      
       {files.length > 0 && (
         <Card 
-          title="Uploaded Files" 
-          className="mb-4"
+          className="mb-6" 
+          title="Uploaded Files"
           titleAction={
-            files.some(file => file.status === 'error') ? (
-              <Button 
-                variant="text" 
-                size="small" 
-                onClick={handleClearErrorFiles} 
-                className="text-red-600 dark:text-red-400"
-              >
-                Clear Errors
-              </Button>
-            ) : undefined
+            <Button 
+              variant="secondary" 
+              size="small" 
+              onClick={handleClearFiles}
+              disabled={isUploading || files.length === 0}
+            >
+              Clear All
+            </Button>
           }
         >
-          <PDFFileList
+          <PDFFileList 
             files={files}
             onRemove={handleRemoveFile}
             onRetry={handleRetryFile}
-            onClearAll={handleClearAllFiles}
-            onClearErrors={handleClearErrorFiles}
+            onClearAll={handleClearFiles}
             onCombine={handleCombinePDFs}
           />
         </Card>
       )}
       
-      {/* Help text for handling errors */}
-      {files.some(file => file.status === 'error') && (
-        <div className="text-sm text-gray-600 dark:text-gray-400 mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-          <h3 className="font-semibold text-yellow-800 dark:text-yellow-400 mb-2">Troubleshooting Tips</h3>
-          <ul className="list-disc list-inside space-y-1 text-left">
-            <li>Make sure your PDF files are not password protected</li>
-            <li>Try a different PDF file if a specific file consistently fails</li>
-            <li>PDF files should be valid and not corrupted</li>
-            <li>Files must be under 500MB in size</li>
-            <li>Use the "Retry" button to attempt processing the file again</li>
-          </ul>
+      {/* Add the document preview section */}
+      {renderDocumentPreview()}
+      
+      {files.filter(file => file.status === 'ready' && file.selected).length > 0 && (
+        <div className="flex justify-center">
+          <Button 
+            variant="primary" 
+            size="large" 
+            onClick={handleCombinePDFs}
+            disabled={isUploading || files.filter(file => file.status === 'ready' && file.selected).length === 0}
+          >
+            Combine PDFs
+          </Button>
         </div>
       )}
     </div>
