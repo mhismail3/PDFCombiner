@@ -47,7 +47,7 @@ Test with valid and invalid file types. Test with files exceeding size limits. V
 7. Ensure notifications are accessible (screen readers, keyboard navigation)
 8. Add unit tests for notification logic and integration tests for UI components
 
-## 4. Implement error recovery paths for invalid uploads [pending]
+## 4. Implement error recovery paths for invalid uploads [done]
 ### Dependencies: 4.1, 4.2, 4.3
 ### Description: Create mechanisms for users to correct validation errors by removing invalid files and retrying uploads
 ### Details:

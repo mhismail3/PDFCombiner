@@ -8,17 +8,20 @@ import {
   setIsUploading,
   setUploadProgress,
 } from '../store/slices/pdfSlice';
-import { showNotification } from '../store/slices/uiSlice';
 import { v4 as uuidv4 } from 'uuid';
 import { fileToArrayBuffer, generatePDFThumbnail, getPDFPageCount } from '../utils/pdfUtils';
 import PDFFileList from '../components/PDFFileList';
 import FileUploadArea from '../components/FileUploadArea';
-import { Card, Button, ProgressBar } from '../components/ui';
+import { Button, ProgressBar } from '../components/ui';
+import Card from '../components/ui/Card';
+import { useValidationNotifications } from '../services/notificationService';
 
 const HomePage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { files, isUploading, uploadProgress } = useAppSelector(state => state.pdf);
   const [error, setError] = useState<string | null>(null);
+  const notifications = useValidationNotifications();
+  const [retryingFileId, setRetryingFileId] = useState<string | null>(null);
 
   // Process uploaded files to generate thumbnails and get page counts
   useEffect(() => {
@@ -51,6 +54,7 @@ const HomePage: React.FC = () => {
         } catch (err) {
           // Log error details without using console.log directly
           const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          
           dispatch(
             updatePDFFile({
               id: file.id,
@@ -61,18 +65,22 @@ const HomePage: React.FC = () => {
             })
           );
 
-          dispatch(
-            showNotification({
-              message: `Error processing ${file.name}: ${errorMessage}`,
-              type: 'error',
-            })
-          );
+          // Only show notification if it's not during a retry operation
+          if (file.id !== retryingFileId) {
+            notifications.showError(
+              `Error processing ${file.name}: ${errorMessage}`,
+              'File Processing Error'
+            );
+          }
         }
       }
+
+      // Reset retrying state when processing is complete
+      setRetryingFileId(null);
     };
 
     processPendingFiles();
-  }, [files, dispatch]);
+  }, [files, dispatch, notifications, retryingFileId]);
 
   // Handle file upload
   const handleFileUpload = useCallback(
@@ -115,70 +123,107 @@ const HomePage: React.FC = () => {
         dispatch(setIsUploading(false));
         setError(null);
 
-        // Show success notification
-        dispatch(
-          showNotification({
-            message: `Successfully uploaded ${newFiles.length} file${newFiles.length > 1 ? 's' : ''}.`,
-            type: 'success',
-          })
-        );
+        // Notification is now handled by the FileUploadArea component
       } catch (err) {
         dispatch(setIsUploading(false));
         setError('Error processing PDF files. Please try again.');
-        dispatch(
-          showNotification({
-            message: 'Error processing PDF files. Please try again.',
-            type: 'error',
-          })
-        );
-        // Log error in a way that can be disabled in production
+        
         const errorMessage = err instanceof Error ? err.message : String(err);
-        dispatch(
-          showNotification({
-            message: `Upload error: ${errorMessage}`,
-            type: 'error',
-          })
-        );
+        notifications.showError('Error processing PDF files. Please try again.', 'Upload Error');
       }
     },
-    [dispatch]
+    [dispatch, notifications]
   );
+
+  // Handle retrying a failed file
+  const handleRetryFile = useCallback(
+    (id: string) => {
+      const fileToRetry = files.find(file => file.id === id);
+      if (!fileToRetry || !fileToRetry.data) {
+        notifications.showError(
+          'Cannot retry this file. The file data is missing.',
+          'Retry Failed'
+        );
+        return;
+      }
+
+      // Set retrying state to avoid duplicate error notifications
+      setRetryingFileId(id);
+
+      // Update file status to loading
+      dispatch(
+        updatePDFFile({
+          id,
+          updates: {
+            status: 'loading',
+            error: undefined,
+          },
+        })
+      );
+
+      notifications.showInfo(
+        `Retrying ${fileToRetry.name}...`,
+        'Retrying File'
+      );
+    },
+    [files, dispatch, notifications]
+  );
+
+  // Handle clearing error files
+  const handleClearErrorFiles = useCallback(() => {
+    // Get IDs of error files
+    const errorFileIds = files
+      .filter(file => file.status === 'error')
+      .map(file => file.id);
+
+    // Remove each error file
+    errorFileIds.forEach(id => {
+      dispatch(removePDFFile(id));
+    });
+
+    if (errorFileIds.length > 0) {
+      notifications.showInfo(
+        `Removed ${errorFileIds.length} file${errorFileIds.length !== 1 ? 's' : ''} with errors.`,
+        'Cleared Errors'
+      );
+    }
+  }, [files, dispatch, notifications]);
 
   // Handle PDF combination (placeholder)
   const handleCombinePDFs = () => {
     // This will be implemented when we integrate PDF-lib.js
-    dispatch(
-      showNotification({
-        message: 'PDF combination functionality will be implemented in a future task.',
-        type: 'info',
-      })
+    notifications.showInfo(
+      'PDF combination functionality will be implemented in a future task.',
+      'Coming Soon'
     );
   };
 
   // Handle removing a file
   const handleRemoveFile = useCallback(
     (id: string) => {
+      const fileToRemove = files.find(file => file.id === id);
       dispatch(removePDFFile(id));
-      dispatch(
-        showNotification({
-          message: 'File removed successfully.',
-          type: 'info',
-        })
-      );
+      
+      if (fileToRemove) {
+        notifications.showInfo(
+          `Removed "${fileToRemove.name}".`,
+          'File Removed'
+        );
+      }
     },
-    [dispatch]
+    [files, dispatch, notifications]
   );
 
   // Handle clearing all files
   const handleClearAllFiles = useCallback(() => {
+    if (files.length === 0) return;
+    
     dispatch(clearPDFFiles());
-    dispatch(
-      showNotification({
-        message: 'All files cleared successfully.',
-        type: 'info',
-      })
+    notifications.showInfo(
+      `Cleared ${files.length} file${files.length !== 1 ? 's' : ''}.`,
+      'All Files Cleared'
     );
-  }, [dispatch]);
+  }, [files, dispatch, notifications]);
 
   return (
     <div className="text-center">
@@ -228,27 +273,45 @@ const HomePage: React.FC = () => {
 
       {/* PDF File List Component */}
       {files.length > 0 && (
-        <Card title="Uploaded Files" className="mb-4">
+        <Card 
+          title="Uploaded Files" 
+          className="mb-4"
+          titleAction={
+            files.some(file => file.status === 'error') ? (
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={handleClearErrorFiles} 
+                className="text-red-600 dark:text-red-400"
+              >
+                Clear Errors
+              </Button>
+            ) : undefined
+          }
+        >
           <PDFFileList
             files={files}
             onRemove={handleRemoveFile}
+            onRetry={handleRetryFile}
             onClearAll={handleClearAllFiles}
+            onClearErrors={handleClearErrorFiles}
             onCombine={handleCombinePDFs}
           />
-
-          <div className="mt-4 flex justify-end">
-            <Button variant="danger" onClick={handleClearAllFiles} className="mr-2">
-              Clear All
-            </Button>
-            <Button
-              variant="success"
-              onClick={handleCombinePDFs}
-              disabled={files.length < 2 || files.some(file => file.status === 'loading')}
-            >
-              Combine PDFs
-            </Button>
-          </div>
         </Card>
+      )}
+      
+      {/* Help text for handling errors */}
+      {files.some(file => file.status === 'error') && (
+        <div className="text-sm text-gray-600 dark:text-gray-400 mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+          <h3 className="font-semibold text-yellow-800 dark:text-yellow-400 mb-2">Troubleshooting Tips</h3>
+          <ul className="list-disc list-inside space-y-1 text-left">
+            <li>Make sure your PDF files are not password protected</li>
+            <li>Try a different PDF file if a specific file consistently fails</li>
+            <li>PDF files should be valid and not corrupted</li>
+            <li>Files must be under 500MB in size</li>
+            <li>Use the "Retry" button to attempt processing the file again</li>
+          </ul>
+        </div>
       )}
     </div>
   );

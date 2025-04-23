@@ -204,7 +204,7 @@
             3
           ],
           "details": "1. Add a file removal feature to delete invalid files from the upload queue\n2. Implement a retry mechanism for failed uploads\n3. Create clear error states in the UI that indicate which files failed validation\n4. Add actionable error messages that suggest how to fix the issues\n5. Implement file replacement functionality to swap invalid files\n6. Ensure the UI clearly shows which files are valid/invalid\n7. Test the recovery flows with various error scenarios\n8. Add integration tests to verify the complete error recovery process",
-          "status": "pending",
+          "status": "done",
           "parentTaskId": 4
         },
         {

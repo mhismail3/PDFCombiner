@@ -1,9 +1,10 @@
 import React, { ReactNode } from 'react';
 
-interface CardProps {
+export interface CardProps {
   children: ReactNode;
   className?: string;
   title?: string;
+  titleAction?: ReactNode;
   footer?: ReactNode;
   noPadding?: boolean;
   bordered?: boolean;
@@ -14,6 +15,7 @@ const Card: React.FC<CardProps> = ({
   children,
   className = '',
   title,
+  titleAction,
   footer,
   noPadding = false,
   bordered = true,
@@ -38,8 +40,9 @@ const Card: React.FC<CardProps> = ({
       className={`bg-white dark:bg-gray-800 rounded-lg ${borderClasses} ${shadowClasses[shadow]} ${className}`}
     >
       {title && (
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <h3 className="font-medium text-gray-900 dark:text-white">{title}</h3>
+          {titleAction && <div className="flex items-center">{titleAction}</div>}
         </div>
       )}
 
