@@ -49,20 +49,21 @@ const HomePage: React.FC = () => {
             })
           );
         } catch (err) {
-          console.error(`Error processing file ${file.name}:`, err);
+          // Log error details without using console.log directly
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
           dispatch(
             updatePDFFile({
               id: file.id,
               updates: {
                 status: 'error',
-                error: err instanceof Error ? err.message : 'Unknown error',
+                error: errorMessage,
               },
             })
           );
 
           dispatch(
             showNotification({
-              message: `Error processing ${file.name}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+              message: `Error processing ${file.name}: ${errorMessage}`,
               type: 'error',
             })
           );
@@ -130,7 +131,14 @@ const HomePage: React.FC = () => {
             type: 'error',
           })
         );
-        console.error('Error uploading files:', err);
+        // Log error in a way that can be disabled in production
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        dispatch(
+          showNotification({
+            message: `Upload error: ${errorMessage}`,
+            type: 'error',
+          })
+        );
       }
     },
     [dispatch]

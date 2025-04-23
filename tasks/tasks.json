@@ -168,7 +168,7 @@
           "description": "Create validation logic to check if uploaded files are PDF documents by examining file extensions and MIME types",
           "dependencies": [],
           "details": "1. Create a FileValidator class/module with a validateFileType method\n2. Implement checks for both file extension (.pdf) and MIME type (application/pdf)\n3. Use the File API to access file metadata\n4. Return validation results with specific error codes/messages for invalid types\n5. Test with various file types including valid PDFs and non-PDF files\n6. Add unit tests to verify validation logic works correctly",
-          "status": "pending",
+          "status": "done",
           "parentTaskId": 4
         },
         {
@@ -179,7 +179,7 @@
             1
           ],
           "details": "1. Extend the FileValidator class with a validateFileSize method\n2. Implement size checking logic using File.size property (in bytes)\n3. Convert the 500MB limit to bytes (500 * 1024 * 1024)\n4. Return validation results with specific error codes/messages for oversized files\n5. Test with files of various sizes including edge cases (exactly 500MB, slightly over)\n6. Add unit tests to verify size validation works correctly\n7. Integrate with the existing file type validation to create a complete validation pipeline",
-          "status": "pending",
+          "status": "done",
           "parentTaskId": 4
         },
         {

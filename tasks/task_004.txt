@@ -11,7 +11,7 @@ Create validation logic to ensure only PDF files are accepted. Implement file si
 Test with valid and invalid file types. Test with files exceeding size limits. Verify error messages are clear and actionable. Ensure users can recover from error states without reloading the application.
 
 # Subtasks:
-## 1. Implement file type validation for PDF files [pending]
+## 1. Implement file type validation for PDF files [done]
 ### Dependencies: None
 ### Description: Create validation logic to check if uploaded files are PDF documents by examining file extensions and MIME types
 ### Details:
@@ -22,7 +22,7 @@ Test with valid and invalid file types. Test with files exceeding size limits. V
 5. Test with various file types including valid PDFs and non-PDF files
 6. Add unit tests to verify validation logic works correctly
 
-## 2. Add file size validation with 500MB limit [pending]
+## 2. Add file size validation with 500MB limit [done]
 ### Dependencies: 4.1
 ### Description: Implement size validation to ensure uploaded files don't exceed the 500MB maximum limit
 ### Details:

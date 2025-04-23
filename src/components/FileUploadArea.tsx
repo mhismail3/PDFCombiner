@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, KeyboardEvent } from 'react';
 import { useAppDispatch } from '../store/hooks';
 import { showNotification } from '../store/slices/uiSlice';
 import { FileValidator } from '../utils/fileValidator';
+import { formatFileSize } from '../utils/pdfUtils';
 import { Button } from './ui';
 
 interface FileUploadAreaProps {
@@ -21,7 +22,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   isUploading = false,
   disabled = false,
   className = '',
-  maxFileSize = 500 * 1024 * 1024, // 500MB default
+  maxFileSize = FileValidator.MAX_FILE_SIZE, // Use the constant from FileValidator
 }) => {
   const [isDragActive, setIsDragActive] = useState(false);
   const [isDragInvalid, setIsDragInvalid] = useState(false);
@@ -44,26 +45,19 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
 
       // Filter for PDF files and check size
       const validFiles: File[] = [];
-      const invalidFiles: { file: File; reason: string }[] = [];
+      const invalidFiles: { file: File; reason: string; errorCode?: string }[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        
-        // Check file size
-        if (file.size > maxFileSize) {
-          invalidFiles.push({
-            file,
-            reason: `File "${file.name}" exceeds the maximum size limit of ${maxFileSize / (1024 * 1024)}MB.`
-          });
-          continue;
-        }
 
-        // Validate file type and integrity
-        const validationResult = await FileValidator.validatePdfFile(file);
+        // Perform full PDF validation
+        const validationResult = await FileValidator.validatePdfFile(file, maxFileSize);
+        
         if (!validationResult.isValid) {
           invalidFiles.push({
             file,
-            reason: validationResult.errorMessage || 'Invalid file'
+            reason: validationResult.errorMessage || 'Invalid file',
+            errorCode: validationResult.errorCode
           });
           continue;
         }
@@ -77,20 +71,66 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         
         if (invalidFiles.length === totalFiles) {
           // All files are invalid
-          dispatch(
-            showNotification({
-              message: totalFiles === 1 
-                ? invalidFiles[0].reason 
-                : `All ${totalFiles} files are invalid. Please upload only valid PDF files.`,
-              type: 'error',
-            })
-          );
+          if (totalFiles === 1) {
+            // If only one file was uploaded, show specific error message
+            const { reason, errorCode } = invalidFiles[0];
+            
+            // Determine the notification type based on error code
+            const notificationType = errorCode === 'FILE_TOO_LARGE' ? 'warning' : 'error';
+            
+            dispatch(
+              showNotification({
+                message: reason,
+                type: notificationType,
+              })
+            );
+          } else {
+            // Multiple files, all invalid
+            // Categorize errors to provide better feedback
+            const sizeErrors = invalidFiles.filter(f => f.errorCode === 'FILE_TOO_LARGE').length;
+            const typeErrors = invalidFiles.filter(f => 
+              f.errorCode === 'INVALID_FILE_TYPE' || f.errorCode === 'INVALID_FILE_EXTENSION'
+            ).length;
+            
+            let message = `All ${totalFiles} files are invalid.`;
+            
+            if (sizeErrors > 0) {
+              message += ` ${sizeErrors} ${sizeErrors === 1 ? 'file exceeds' : 'files exceed'} the size limit of ${formatFileSize(maxFileSize)}.`;
+            }
+            
+            if (typeErrors > 0) {
+              message += ` ${typeErrors} ${typeErrors === 1 ? 'file is not' : 'files are not'} in PDF format.`;
+            }
+            
+            dispatch(
+              showNotification({
+                message,
+                type: 'error',
+              })
+            );
+          }
           return;
         } else {
           // Some files are invalid
+          // Categorize errors to provide better feedback
+          const sizeErrors = invalidFiles.filter(f => f.errorCode === 'FILE_TOO_LARGE').length;
+          const typeErrors = invalidFiles.filter(f => 
+            f.errorCode === 'INVALID_FILE_TYPE' || f.errorCode === 'INVALID_FILE_EXTENSION'
+          ).length;
+          
+          let message = `${invalidFiles.length} of ${totalFiles} files are invalid and will be skipped.`;
+          
+          if (sizeErrors > 0) {
+            message += ` ${sizeErrors} ${sizeErrors === 1 ? 'file exceeds' : 'files exceed'} the size limit.`;
+          }
+          
+          if (typeErrors > 0) {
+            message += ` ${typeErrors} ${typeErrors === 1 ? 'file is not' : 'files are not'} in PDF format.`;
+          }
+          
           dispatch(
             showNotification({
-              message: `${invalidFiles.length} of ${totalFiles} files are invalid and will be skipped.`,
+              message,
               type: 'warning',
             })
           );
@@ -102,6 +142,14 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         // Create a DataTransfer object to create a new FileList
         const dataTransfer = new DataTransfer();
         validFiles.forEach(file => dataTransfer.items.add(file));
+        
+        // Show success notification
+        dispatch(
+          showNotification({
+            message: `${validFiles.length} ${validFiles.length === 1 ? 'file' : 'files'} ready for processing.`,
+            type: 'success',
+          })
+        );
         
         // Call the onFilesSelected callback with the valid files
         onFilesSelected(dataTransfer.files);
@@ -249,42 +297,50 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           multiple={multiple}
           onChange={handleFileInputChange}
           className="hidden"
-          disabled={disabled || isUploading}
           aria-hidden="true"
+          tabIndex={-1}
         />
         
-        <svg
-          className="w-10 h-10 mb-3 text-gray-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-          ></path>
-        </svg>
-        
-        <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
-          <span className="font-semibold">Click to upload</span> or drag and drop
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {multiple ? 'PDF files only (max 500MB per file)' : 'PDF file only (max 500MB)'}
-        </p>
-        
-        <Button
-          variant="primary"
-          size="small"
-          className="mt-4"
-          onClick={handleBrowseClick}
-          disabled={disabled || isUploading}
-          isLoading={isUploading}
-        >
-          {isUploading ? 'Uploading...' : 'Browse Files'}
-        </Button>
+        <div className="flex flex-col items-center justify-center">
+          <svg
+            className="w-12 h-12 text-gray-400 mb-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+            />
+          </svg>
+          
+          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+            <span className="font-semibold">Click to upload</span> or drag and drop
+          </p>
+          
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            PDF files only (max {formatFileSize(maxFileSize)})
+          </p>
+          
+          {multiple && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              You can select multiple files
+            </p>
+          )}
+          
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={handleBrowseClick}
+            disabled={disabled || isUploading}
+            className="mt-4"
+          >
+            Browse Files
+          </Button>
+        </div>
       </div>
     </div>
   );

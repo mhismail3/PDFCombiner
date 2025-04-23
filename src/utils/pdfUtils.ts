@@ -5,6 +5,8 @@
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist';
 import { ValidationResult } from './fileValidator';
+import { showNotification } from '../store/slices/uiSlice';
+import { store } from '../store';
 
 // Initialize PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -27,6 +29,31 @@ export const fileToArrayBuffer = (file: File): Promise<ArrayBuffer> => {
     reader.onerror = reject;
     reader.readAsArrayBuffer(file);
   });
+};
+
+/**
+ * Log error in a way that can be controlled globally
+ * @param message Error message prefix
+ * @param error Error object
+ */
+const logError = (message: string, error: unknown): void => {
+  // In development, we might still want to see errors
+  if (process.env.NODE_ENV === 'development') {
+    // eslint-disable-next-line no-console
+    console.error(message, error);
+  }
+  
+  // Always log to error monitoring service if available
+  // errorMonitoringService.captureError(error);
+  
+  // Notify the user through UI
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  store.dispatch(
+    showNotification({
+      message: `${message}: ${errorMessage}`,
+      type: 'error',
+    })
+  );
 };
 
 /**
@@ -65,7 +92,7 @@ export const generatePDFThumbnail = async (pdfData: ArrayBuffer): Promise<string
     // Convert canvas to base64 image
     return canvas.toDataURL('image/jpeg', 0.7);
   } catch (error) {
-    console.error('Error generating PDF thumbnail:', error);
+    logError('Error generating PDF thumbnail', error);
     throw error;
   }
 };
@@ -79,7 +106,7 @@ export const getPDFPageCount = async (pdfData: ArrayBuffer): Promise<number> => 
     const pdf = await loadingTask.promise;
     return pdf.numPages;
   } catch (error) {
-    console.error('Error getting PDF page count:', error);
+    logError('Error getting PDF page count', error);
     throw error;
   }
 };
@@ -179,7 +206,7 @@ export const mergePDFs = async (
           progressCallback((processedFiles / totalFiles) * 100);
         }
       } catch (error) {
-        console.error(`Error processing ${pdfFile.name}:`, error);
+        logError(`Error processing ${pdfFile.name}`, error);
         throw new Error(`Failed to process ${pdfFile.name}. ${error}`);
       }
     }
@@ -198,7 +225,7 @@ export const mergePDFs = async (
       size: mergedPdfBytes.byteLength,
     };
   } catch (error) {
-    console.error('Error merging PDFs:', error);
+    logError('Error merging PDFs', error);
     throw error;
   }
 };
@@ -229,7 +256,7 @@ export const extractPDFPages = async (
     const newPdfBytes = await newPdf.save();
     return newPdfBytes.buffer as ArrayBuffer;
   } catch (error) {
-    console.error('Error extracting PDF pages:', error);
+    logError('Error extracting PDF pages', error);
     throw error;
   }
 };
@@ -249,10 +276,16 @@ export const isPDFPasswordProtected = async (pdfData: ArrayBuffer): Promise<bool
   } catch (error) {
     // Check if the error is related to encryption
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return (
-      errorMessage.includes('encrypt') ||
+    
+    if (
+      errorMessage.includes('encrypted') ||
       errorMessage.includes('password') ||
-      errorMessage.includes('permission')
-    );
+      errorMessage.includes('decrypt')
+    ) {
+      return true;
+    }
+    
+    // For other errors, we'll assume it's not related to password protection
+    throw error;
   }
 };
