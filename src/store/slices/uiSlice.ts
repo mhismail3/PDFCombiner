@@ -10,8 +10,16 @@ interface UiState {
   };
 }
 
+// Helper function to check dark mode preference safely (works in both browser and SSR)
+const isDarkModePreferred = (): boolean => {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return true; // Default to dark mode in SSR
+};
+
 const initialState: UiState = {
-  darkMode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+  darkMode: isDarkModePreferred(),
   sidebarOpen: false,
   notification: {
     show: false,

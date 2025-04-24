@@ -1,4 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
+import { getDefaultMiddleware } from '@reduxjs/toolkit';
 import uiReducer from './slices/uiSlice';
 import pdfReducer from './slices/pdfSlice';
 
@@ -8,7 +9,22 @@ export const store = configureStore({
     pdf: pdfReducer,
     // Additional reducers will be added here as needed
   },
-  // Middleware and other config can be added here
+  middleware: getDefaultMiddleware({
+    // Configure middleware to handle non-serializable values
+    serializableCheck: {
+      // Ignore these action types
+      ignoredActions: [
+        'pdf/addPDFFiles', 
+        'pdf/updatePDFFile',
+        'pdf/setResultFile'
+      ],
+      // Ignore these field paths in the state
+      ignoredPaths: [
+        'pdf.files.data',
+        'pdf.files.dataRef'
+      ],
+    },
+  }),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

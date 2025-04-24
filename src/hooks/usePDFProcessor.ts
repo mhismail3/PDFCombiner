@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { usePDFWorker } from './usePDFWorker';
@@ -6,7 +6,17 @@ import { usePDFThumbnails } from './usePDFThumbnails';
 import { usePDFPageData, PDFPageData, PDFDocumentInfo } from './usePDFPageData';
 
 // Initialize PDFjs worker
-pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf-worker/pdf.worker.min.mjs';
+
+// Helper function to clone an ArrayBuffer
+function cloneArrayBuffer(buffer: ArrayBuffer | null): ArrayBuffer | null {
+  if (!buffer) return null;
+  
+  // Create a new ArrayBuffer and copy the contents
+  const clone = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(clone).set(new Uint8Array(buffer));
+  return clone;
+}
 
 export interface PDFProcessorOptions {
   includeTextContent?: boolean;
@@ -42,6 +52,11 @@ export const usePDFProcessor = (
     autoProcess = true
   } = options;
   
+  // Make defensive copies of the ArrayBuffer to prevent detached buffer issues
+  const pdfDataCopy = useMemo(() => cloneArrayBuffer(pdfData), [pdfData]);
+  const thumbnailPdfData = useMemo(() => generateThumbnails ? cloneArrayBuffer(pdfData) : null, [pdfData, generateThumbnails]);
+  const pageDataPdfData = useMemo(() => cloneArrayBuffer(pdfData), [pdfData]);
+  
   // State for processing
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -54,7 +69,7 @@ export const usePDFProcessor = (
     pageCount: thumbnailPageCount, 
     getThumbnail,
     cacheSize
-  } = usePDFThumbnails(generateThumbnails ? pdfData : null, {
+  } = usePDFThumbnails(thumbnailPdfData, {
     width: thumbnailWidth,
     height: thumbnailHeight,
     quality: thumbnailQuality,
@@ -70,7 +85,7 @@ export const usePDFProcessor = (
     pagesData,
     pageCount: dataPageCount,
     isLoading: isDataLoading
-  } = usePDFPageData(pdfData, {
+  } = usePDFPageData(pageDataPdfData, {
     includeTextContent,
     onProgress: (page, total) => {
       // Update progress based on page data extraction (50% to 100%)
@@ -104,26 +119,14 @@ export const usePDFProcessor = (
    * Get PDF processing result
    */
   const getResult = useCallback((): PDFProcessorResult => {
-    // Collect all thumbnails from cache
-    const thumbnails: { [pageNumber: number]: string } = {};
-    
-    if (generateThumbnails) {
-      for (let i = 1; i <= pageCount; i++) {
-        const thumbnail = getThumbnail(i);
-        if (thumbnail) {
-          thumbnails[i] = thumbnail;
-        }
-      }
-    }
-    
     return {
-      thumbnails,
+      thumbnails: {}, // Now empty as we're using usePDFThumbnails directly for thumbnails
       pageData: pagesData,
       docInfo: documentInfo,
       pageCount,
       selectedPages
     };
-  }, [pageCount, pagesData, documentInfo, selectedPages, generateThumbnails, getThumbnail]);
+  }, [pageCount, pagesData, documentInfo, selectedPages]);
   
   /**
    * Extract specific pages from the PDF
@@ -132,15 +135,23 @@ export const usePDFProcessor = (
     pageIndexes: number[],
     onComplete: (result: ArrayBuffer) => void
   ) => {
-    if (!pdfData) {
+    if (!pdfDataCopy) {
       setError('No PDF data available');
       return;
     }
     
     setIsProcessing(true);
     
+    // Make another copy for extraction to prevent detached buffer issues
+    const extractPdfData = cloneArrayBuffer(pdfDataCopy);
+    
+    if (!extractPdfData) {
+      setError('Failed to clone PDF data for extraction');
+      return;
+    }
+    
     return pdfWorker.extractPDFPages(
-      pdfData,
+      extractPdfData,
       pageIndexes.map(p => p - 1), // Convert to 0-indexed for the worker
       result => {
         setIsProcessing(false);
@@ -150,7 +161,7 @@ export const usePDFProcessor = (
         setProgress(prog);
       }
     );
-  }, [pdfData, pdfWorker]);
+  }, [pdfDataCopy, pdfWorker]);
   
   /**
    * Update selected pages
@@ -208,15 +219,14 @@ export const usePDFProcessor = (
     progress,
     error,
     pageCount,
+    selectedPages,
     documentInfo,
     pagesData,
-    selectedPages,
     extractPages,
-    getResult,
     selectPages,
     togglePageSelection,
     selectAllPages,
     clearSelection,
-    getThumbnail
+    getResult
   };
 }; 

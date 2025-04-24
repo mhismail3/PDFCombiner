@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePDFProcessor } from '../hooks/usePDFProcessor';
+import { usePDFThumbnails } from '../hooks/usePDFThumbnails';
 import PDFPageThumbnail from './PDFPageThumbnail';
 
 interface PDFProgressiveViewProps {
@@ -44,20 +45,30 @@ const PDFProgressiveView: React.FC<PDFProgressiveViewProps> = ({
   const [showPagination, setShowPagination] = useState(false);
   const [visibleCache, setVisibleCache] = useState<Set<number>>(new Set());
   
-  // Use the PDF processor hook to manage thumbnails and data
+  // Get document information and processing status from PDF processor
   const {
     isProcessing,
     progress,
     pageCount,
     documentInfo,
-    selectedPages: internalSelectedPages,
-    togglePageSelection,
-    getThumbnail
+    selectedPages: processorSelectedPages,
+    togglePageSelection
   } = usePDFProcessor(pdfData, {
-    generateThumbnails: true,
-    thumbnailWidth,
-    thumbnailHeight,
-    autoProcess: true
+    generateThumbnails: false, // We'll handle thumbnails separately
+  });
+
+  // Use the PDF thumbnails hook for thumbnail management
+  const {
+    thumbnails,
+    isLoading: isThumbnailsLoading,
+    error: thumbnailsError,
+    getThumbnail,
+    prefetchThumbnails
+  } = usePDFThumbnails(pdfData, {
+    width: thumbnailWidth,
+    height: thumbnailHeight,
+    quality: 0.7,
+    maxCacheSize
   });
   
   // Show pagination controls for larger documents
@@ -147,8 +158,51 @@ const PDFProgressiveView: React.FC<PDFProgressiveViewProps> = ({
     };
   }, [pageCount, itemsPerBatch]);
   
-  // Handle page selection
-  const handlePageSelect = useCallback((pageNumber: number) => {
+  // Apply pagination logic
+  const visiblePageNumbers = useMemo(() => {
+    if (pageCount === 0) return [];
+    
+    // Generate an array of page numbers for the current visible range
+    return Array.from(
+      { length: visibleEndIndex - visibleStartIndex + 1 },
+      (_, i) => visibleStartIndex + i
+    ).filter(page => page <= pageCount);
+  }, [visibleStartIndex, visibleEndIndex, pageCount]);
+
+  // Prefetch thumbnails for visible pages and a few pages ahead
+  useEffect(() => {
+    if (prefetchThumbnails && visiblePageNumbers.length > 0) {
+      // Add a few pages ahead for smoother scrolling
+      const pagesToPrefetch = [];
+      for (let i = visibleStartIndex; i <= Math.min(visibleEndIndex + columnCount * 2, pageCount); i++) {
+        if (i > 0 && i <= pageCount) {
+          pagesToPrefetch.push(i);
+        }
+      }
+      
+      if (pagesToPrefetch.length > 0) {
+        prefetchThumbnails(pagesToPrefetch, { priority: true });
+      }
+    }
+  }, [
+    visiblePageNumbers, 
+    prefetchThumbnails, 
+    visibleStartIndex, 
+    visibleEndIndex, 
+    columnCount, 
+    pageCount
+  ]);
+  
+  // Use a stable reference to pdfData to prevent unnecessary re-renders
+  const pdfDataRef = useRef(pdfData);
+  
+  // Only update the ref when pdfData actually changes
+  useEffect(() => {
+    pdfDataRef.current = pdfData;
+  }, [pdfData?.byteLength]);
+
+  // Memoize onPageSelect callback to maintain stability
+  const memoizedPageSelectHandler = useCallback((pageNumber: number) => {
     if (onPageSelect) {
       const isSelected = selectedPages.includes(pageNumber);
       onPageSelect(pageNumber, !isSelected);
@@ -156,23 +210,14 @@ const PDFProgressiveView: React.FC<PDFProgressiveViewProps> = ({
       togglePageSelection(pageNumber);
     }
   }, [onPageSelect, selectedPages, togglePageSelection]);
-  
-  // Handle page preview
-  const handlePagePreview = useCallback((pageNumber: number) => {
+
+  // Memoize onPreview callback to maintain stability
+  const memoizedPreviewHandler = useCallback((pageNumber: number) => {
     setCurrentPage(pageNumber);
     if (onPreview) {
       onPreview(pageNumber);
     }
   }, [onPreview]);
-  
-  // Generate an array of visible page numbers - memoize to prevent unnecessary recalculations
-  const visiblePages = useMemo(() => {
-    const pages = [];
-    for (let i = visibleStartIndex + 1; i <= Math.min(visibleEndIndex, pageCount); i++) {
-      pages.push(i);
-    }
-    return pages;
-  }, [visibleStartIndex, visibleEndIndex, pageCount]);
   
   // Handle scroll to implement efficient virtualization
   const handleScroll = useCallback(() => {
@@ -414,7 +459,7 @@ const PDFProgressiveView: React.FC<PDFProgressiveViewProps> = ({
         ref={containerRef}
         className="overflow-auto flex-grow"
         style={{ maxHeight: '65vh' }}
-        onScroll={() => handleScroll()}
+        onScroll={handleScroll}
       >
         {/* Thumbnails grid */}
         <div 
@@ -424,17 +469,17 @@ const PDFProgressiveView: React.FC<PDFProgressiveViewProps> = ({
           }}
         >
           {/* Only render thumbnails that are in our visible range */}
-          {visiblePages.map(pageNumber => (
+          {visiblePageNumbers.map(pageNumber => (
             <PDFPageThumbnail
               key={pageNumber}
-              pdfData={pdfData}
+              pdfData={pdfDataRef.current}
               pageNumber={pageNumber}
               pageCount={pageCount}
               width={thumbnailWidth}
               height={thumbnailHeight}
               selected={selectedPages.includes(pageNumber)}
-              onSelect={handlePageSelect}
-              onPreview={handlePagePreview}
+              onSelect={memoizedPageSelectHandler}
+              onPreview={memoizedPreviewHandler}
             />
           ))}
           

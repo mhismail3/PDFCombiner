@@ -10,7 +10,7 @@ interface ThemeContextType {
 
 // Create a context with a default value
 const ThemeContext = createContext<ThemeContextType>({
-  theme: 'light',
+  theme: 'dark',
   toggleTheme: () => {},
   setTheme: () => {},
 });
@@ -19,49 +19,82 @@ interface ThemeProviderProps {
   children: ReactNode;
 }
 
+// Check if code is running in browser environment
+const isBrowser = typeof window !== 'undefined';
+
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Check if theme is saved in localStorage, otherwise use system preference
   const getInitialTheme = (): Theme => {
-    const savedTheme = localStorage.getItem('theme') as Theme;
+    // Default to dark if not in browser
+    if (!isBrowser) return 'dark';
 
-    if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
-      return savedTheme;
+    try {
+      const savedTheme = localStorage.getItem('theme') as Theme;
+
+      if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
+        return savedTheme;
+      }
+
+      // Check system preference
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+      }
+    } catch (error) {
+      console.error('Error accessing localStorage or window features:', error);
     }
 
-    // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-
-    return 'light';
+    // Default to dark instead of light
+    return 'dark';
   };
 
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [theme, setTheme] = useState<Theme>('dark'); // Default to dark initially
+
+  // Initialize theme state after mount, to handle SSR
+  useEffect(() => {
+    setTheme(getInitialTheme());
+  }, []);
 
   // Apply theme to document
   useEffect(() => {
-    const root = window.document.documentElement;
+    if (!isBrowser) return;
 
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
+    try {
+      const root = window.document.documentElement;
 
-    // Save to localStorage
-    localStorage.setItem('theme', theme);
+      root.classList.remove('light', 'dark');
+      root.classList.add(theme);
+
+      // Save to localStorage
+      localStorage.setItem('theme', theme);
+    } catch (error) {
+      console.error('Error setting theme:', error);
+    }
   }, [theme]);
 
   // Listen for system theme changes
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    if (!isBrowser) return;
 
-    const handleChange = () => {
-      if (!localStorage.getItem('theme')) {
-        setTheme(mediaQuery.matches ? 'dark' : 'light');
-      }
-    };
+    try {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-    mediaQuery.addEventListener('change', handleChange);
+      const handleChange = () => {
+        try {
+          if (!localStorage.getItem('theme')) {
+            setTheme(mediaQuery.matches ? 'dark' : 'light');
+          }
+        } catch (error) {
+          console.error('Error in media query handler:', error);
+        }
+      };
 
-    return () => mediaQuery.removeEventListener('change', handleChange);
+      mediaQuery.addEventListener('change', handleChange);
+
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    } catch (error) {
+      console.error('Error setting up media query listener:', error);
+      return undefined;
+    }
   }, []);
 
   const toggleTheme = () => {

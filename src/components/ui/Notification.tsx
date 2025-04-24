@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+// Check if in browser environment
+const isBrowser = typeof window !== 'undefined';
 
 // Export this type so it can be used by NotificationProvider
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
@@ -29,7 +32,20 @@ const Notification: React.FC<NotificationProps> = ({
   const remainingTimeRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number | undefined>(undefined);
 
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    if (isBrowser) {
+      setTimeout(() => {
+        onDismiss(id);
+      }, 300); // Allow time for exit animation
+    } else {
+      onDismiss(id);
+    }
+  }, [id, onDismiss]);
+
   useEffect(() => {
+    if (!isBrowser) return;
+    
     if (duration && duration > 0) {
       startTimeRef.current = Date.now();
       remainingTimeRef.current = duration;
@@ -48,16 +64,11 @@ const Notification: React.FC<NotificationProps> = ({
         clearTimeout(timerRef.current);
       }
     };
-  }, [duration]);
-
-  const dismiss = () => {
-    setVisible(false);
-    setTimeout(() => {
-      onDismiss(id);
-    }, 300); // Allow time for exit animation
-  };
+  }, [duration, dismiss]);
 
   const pauseTimer = () => {
+    if (!isBrowser) return;
+    
     if (duration && timerRef.current !== undefined) {
       clearTimeout(timerRef.current);
       timerRef.current = undefined;
@@ -68,6 +79,8 @@ const Notification: React.FC<NotificationProps> = ({
   };
 
   const resumeTimer = () => {
+    if (!isBrowser) return;
+    
     if (duration && remainingTimeRef.current !== undefined) {
       startTimeRef.current = Date.now();
       timerRef.current = window.setTimeout(() => {
@@ -82,7 +95,7 @@ const Notification: React.FC<NotificationProps> = ({
     switch (type) {
       case 'success':
         return {
-          containerClass: 'bg-green-50 dark:bg-green-900 border-green-400 dark:border-green-700',
+          containerClass: 'bg-green-50 dark:bg-green-900 border-green-400 dark:border-green-700 text-green-800 dark:text-green-100',
           iconClass: 'text-green-500 dark:text-green-400',
           progressClass: 'bg-green-500 dark:bg-green-400',
           icon: (
@@ -102,7 +115,7 @@ const Notification: React.FC<NotificationProps> = ({
         };
       case 'error':
         return {
-          containerClass: 'bg-red-50 dark:bg-red-900 border-red-400 dark:border-red-700',
+          containerClass: 'bg-red-50 dark:bg-red-900 border-red-400 dark:border-red-700 text-red-800 dark:text-red-100',
           iconClass: 'text-red-500 dark:text-red-400',
           progressClass: 'bg-red-500 dark:bg-red-400',
           icon: (
@@ -122,8 +135,7 @@ const Notification: React.FC<NotificationProps> = ({
         };
       case 'warning':
         return {
-          containerClass:
-            'bg-yellow-50 dark:bg-yellow-900 border-yellow-400 dark:border-yellow-700',
+          containerClass: 'bg-yellow-50 dark:bg-yellow-900 border-yellow-400 dark:border-yellow-700 text-yellow-800 dark:text-yellow-100',
           iconClass: 'text-yellow-500 dark:text-yellow-400',
           progressClass: 'bg-yellow-500 dark:bg-yellow-400',
           icon: (
@@ -144,7 +156,7 @@ const Notification: React.FC<NotificationProps> = ({
       case 'info':
       default:
         return {
-          containerClass: 'bg-blue-50 dark:bg-blue-900 border-blue-400 dark:border-blue-700',
+          containerClass: 'bg-blue-50 dark:bg-blue-900 border-blue-400 dark:border-blue-700 text-blue-800 dark:text-blue-100',
           iconClass: 'text-blue-500 dark:text-blue-400',
           progressClass: 'bg-blue-500 dark:bg-blue-400',
           icon: (
@@ -177,56 +189,52 @@ const Notification: React.FC<NotificationProps> = ({
 
   return (
     <div
-      className={`transform transition-all duration-300 ease-in-out ${
-        visible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-      } pointer-events-auto`}
+      className={`transform transition-all duration-300 ease-in-out pointer-events-auto
+        ${visible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
+        ${typeStyles.containerClass}
+        ${className}
+        shadow-lg rounded-lg p-4 mb-4 max-w-md w-full border font-medium`}
       onMouseEnter={pauseTimer}
       onMouseLeave={resumeTimer}
       role="alert"
     >
-      <div
-        className={`max-w-sm w-full shadow-lg rounded-lg pointer-events-auto border-l-4 ${typeStyles.containerClass} ${className}`}
-      >
-        <div className="p-4">
-          <div className="flex items-start">
-            <div className={`flex-shrink-0 ${typeStyles.iconClass}`}>{typeStyles.icon}</div>
-            <div className="ml-3 w-0 flex-1">
-              {title && (
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{title}</p>
-              )}
-              <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{message}</p>
-
-              {/* Progress bar for auto-dismiss notifications */}
-              {duration && duration > 0 && (
-                <div className="h-1 mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${typeStyles.progressClass} transition-all duration-100 ease-linear`}
-                    style={{ width: `${getProgressPercentage()}%` }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="ml-4 flex-shrink-0 flex">
-              <button
-                className="inline-flex text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                onClick={() => dismiss()}
-              >
-                <span className="sr-only">Close</span>
-                <svg
-                  className="h-5 w-5"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            </div>
+      <div className="flex items-start">
+        <div className="flex-shrink-0">{typeStyles.icon}</div>
+        <div className="ml-3 flex-1 min-w-0">
+          {title && <h3 className="text-sm font-semibold">{title}</h3>}
+          <div className="mt-1">
+            <p className="text-sm break-words whitespace-normal">{message}</p>
           </div>
+
+          {/* Progress bar for auto-dismiss notifications */}
+          {duration && duration > 0 && (
+            <div className="h-1 mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${typeStyles.progressClass} transition-all duration-100 ease-linear`}
+                style={{ width: `${getProgressPercentage()}%` }}
+              />
+            </div>
+          )}
+        </div>
+        <div className="ml-4 flex-shrink-0 flex">
+          <button
+            className="inline-flex text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            onClick={() => dismiss()}
+          >
+            <span className="sr-only">Close</span>
+            <svg
+              className="h-5 w-5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                fillRule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

@@ -70,6 +70,12 @@ export const usePDFThumbnails = (
       }
       
       try {
+        // Add additional validation before loading
+        if (pdfData.byteLength === 0) {
+          setError('PDF data is empty');
+          return;
+        }
+        
         const pdfDoc = await pdfService.loadDocument(pdfData);
         const count = await pdfService.getPageCount(pdfDoc);
         setPageCount(count);
@@ -87,6 +93,9 @@ export const usePDFThumbnails = (
   useEffect(() => {
     if (!pdfData || pageCount === 0) return;
     
+    // Store a flag to track if component is mounted
+    let isMounted = true;
+    
     setIsLoading(true);
     setError(null);
     
@@ -96,9 +105,14 @@ export const usePDFThumbnails = (
         pdfData,
         pageCount,
         (result) => {
-          setIsLoading(false);
+          if (isMounted) {
+            setIsLoading(false);
+          }
         },
         async (pageNumber, totalPages, pageInfo) => {
+          // Skip if component unmounted
+          if (!isMounted) return;
+          
           // Use the page info to generate the actual thumbnail in the main thread
           try {
             // Create a cache key for this page/size combination
@@ -108,7 +122,7 @@ export const usePDFThumbnails = (
             // Check if we already have this thumbnail cached
             if (cacheRef.current.hasThumbnail(pageInfo.pageNumber, pageWidth, pageHeight)) {
               // Update progress even for cached thumbnails
-              if (onProgress) {
+              if (onProgress && isMounted) {
                 onProgress(pageNumber, totalPages);
               }
               return;
@@ -117,8 +131,20 @@ export const usePDFThumbnails = (
             // Load the PDF document in the main thread
             const pdfDoc = await pdfService.loadDocument(pdfData);
             
+            // Skip further processing if component unmounted
+            if (!isMounted) {
+              await pdfDoc.destroy();
+              return;
+            }
+            
             // Get the page
             const page = await pdfService.getPage(pdfDoc, pageInfo.pageNumber);
+            
+            // Skip further processing if component unmounted
+            if (!isMounted) {
+              await pdfDoc.destroy();
+              return;
+            }
             
             // Generate the thumbnail
             const thumbnail = await pdfService.generateThumbnail(pdfDoc, {
@@ -127,6 +153,12 @@ export const usePDFThumbnails = (
               height: pageHeight,
               quality: quality
             });
+            
+            // Skip cache update if component unmounted
+            if (!isMounted) {
+              await pdfDoc.destroy();
+              return;
+            }
             
             // Cache the thumbnail
             cacheRef.current.setThumbnail(
@@ -137,14 +169,16 @@ export const usePDFThumbnails = (
             );
             
             // Update progress
-            if (onProgress) {
+            if (onProgress && isMounted) {
               onProgress(pageNumber, totalPages);
             }
             
             // Clean up
             await pdfDoc.destroy();
           } catch (err) {
-            console.error('Error generating thumbnail:', err);
+            if (isMounted) {
+              console.error('Error generating thumbnail:', err);
+            }
           }
         },
         {
@@ -158,9 +192,22 @@ export const usePDFThumbnails = (
     const cleanup = generateThumbnails();
     
     return () => {
+      isMounted = false;
       if (cleanup) cleanup();
     };
-  }, [pdfData, pageCount, generatePDFThumbnails, width, height, quality, onProgress]);
+  // Use specific dependencies to prevent unnecessary regeneration
+  // Instead of using pdfData.byteLength which can create a new reference
+  }, [
+    pdfData, 
+    pageCount, 
+    generatePDFThumbnails, 
+    width, 
+    height, 
+    quality, 
+    onProgress,
+    // Use pdfHashRef.current instead of direct pdfData.byteLength
+    pdfHashRef.current
+  ]);
   
   // Get a specific thumbnail
   const getThumbnail = useCallback(
@@ -176,8 +223,8 @@ export const usePDFThumbnails = (
   
   // Prefetch a range of thumbnails
   const prefetchThumbnails = useCallback(
-    async (startPage: number, endPage: number): Promise<void> => {
-      if (!pdfData) return;
+    async (pageNumbers: number[], options?: { priority?: boolean }): Promise<void> => {
+      if (!pdfData || pageNumbers.length === 0) return;
       
       const fetchThumbnail = async (pageNumber: number): Promise<string> => {
         // If we already have it cached, return it
@@ -197,15 +244,31 @@ export const usePDFThumbnails = (
         return thumbnail;
       };
       
-      await cacheRef.current.prefetchRange(
-        fetchThumbnail,
-        startPage,
-        endPage,
-        width,
-        height
-      );
+      // Sort page numbers if priority is set
+      // This ensures visible pages are processed first
+      let pagesToProcess = [...pageNumbers];
+      if (options?.priority) {
+        // Filter to only include valid page numbers
+        pagesToProcess = pagesToProcess.filter(page => page > 0 && page <= pageCount);
+      }
+      
+      // Process pages in small batches to avoid overwhelming the browser
+      const concurrencyLimit = 3;
+      for (let i = 0; i < pagesToProcess.length; i += concurrencyLimit) {
+        const batch = pagesToProcess.slice(i, i + concurrencyLimit);
+        await Promise.all(
+          batch.map(async (page) => {
+            try {
+              const thumbnail = await fetchThumbnail(page);
+              cacheRef.current.setThumbnail(page, width, height, thumbnail);
+            } catch (error) {
+              console.error(`Failed to prefetch thumbnail for page ${page}:`, error);
+            }
+          })
+        );
+      }
     },
-    [pdfData, width, height, quality]
+    [pdfData, pageCount, width, height, quality]
   );
   
   // Clear the cache

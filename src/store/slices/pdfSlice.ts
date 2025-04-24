@@ -7,7 +7,8 @@ export interface PDFFile {
   size: number;
   type: string;
   lastModified: number;
-  data: ArrayBuffer | null; // File data as ArrayBuffer
+  data: ArrayBuffer | null; // File data as ArrayBuffer - handled specially for Redux
+  dataRef?: string; // Reference to the data stored outside Redux (for serialization)
   preview: string | null; // Base64 encoded thumbnail preview
   pageCount: number;
   selected: boolean; // Whether this file is selected for operations
@@ -44,21 +45,43 @@ const initialState: PDFState = {
   },
 };
 
+// ArrayBuffer cache to store non-serializable data outside Redux
+// This is a workaround for Redux serialization issues
+const arrayBufferCache = new Map<string, ArrayBuffer>();
+
 export const pdfSlice = createSlice({
   name: 'pdf',
   initialState,
   reducers: {
     // Add new PDF files to the state
     addPDFFiles: (state, action: PayloadAction<Omit<PDFFile, 'selected'>[]>) => {
-      const newFiles = action.payload.map(file => ({
-        ...file,
-        selected: true,
-      }));
+      const newFiles = action.payload.map(file => {
+        // Store the ArrayBuffer in our cache
+        const dataRef = file.id;
+        if (file.data) {
+          arrayBufferCache.set(dataRef, file.data);
+        }
+        
+        return {
+          ...file,
+          // Replace the ArrayBuffer with null for Redux
+          // Actual data will be accessed via the cache using dataRef
+          data: null,
+          dataRef: file.data ? dataRef : undefined,
+          selected: true,
+        };
+      });
       state.files = [...state.files, ...newFiles];
     },
 
     // Remove a PDF file by id
     removePDFFile: (state, action: PayloadAction<string>) => {
+      // Clean up any cached data
+      const fileToRemove = state.files.find(file => file.id === action.payload);
+      if (fileToRemove && fileToRemove.dataRef) {
+        arrayBufferCache.delete(fileToRemove.dataRef);
+      }
+      
       state.files = state.files.filter(file => file.id !== action.payload);
     },
 
@@ -66,13 +89,31 @@ export const pdfSlice = createSlice({
     updatePDFFile: (state, action: PayloadAction<{ id: string; updates: Partial<PDFFile> }>) => {
       const { id, updates } = action.payload;
       const fileIndex = state.files.findIndex(file => file.id === id);
+      
       if (fileIndex >= 0) {
+        // Handle ArrayBuffer specially
+        if (updates.data) {
+          const dataRef = state.files[fileIndex].id;
+          arrayBufferCache.set(dataRef, updates.data);
+          
+          // Set the reference and remove the actual data from Redux
+          updates.dataRef = dataRef;
+          updates.data = null;
+        }
+        
         state.files[fileIndex] = { ...state.files[fileIndex], ...updates };
       }
     },
 
     // Clear all PDF files
     clearPDFFiles: state => {
+      // Clean up all cached data
+      state.files.forEach(file => {
+        if (file.dataRef) {
+          arrayBufferCache.delete(file.dataRef);
+        }
+      });
+      
       state.files = [];
       state.resultFile = { url: null, name: null, size: null };
     },
@@ -161,5 +202,18 @@ export const {
   clearResultFile,
   reorderFiles,
 } = pdfSlice.actions;
+
+// Helper function to get the actual ArrayBuffer from a PDFFile
+export const getPDFDataBuffer = (file: PDFFile): ArrayBuffer | null => {
+  if (file.data) {
+    return file.data;
+  }
+  
+  if (file.dataRef && arrayBufferCache.has(file.dataRef)) {
+    return arrayBufferCache.get(file.dataRef) || null;
+  }
+  
+  return null;
+};
 
 export default pdfSlice.reducer;

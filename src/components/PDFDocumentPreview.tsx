@@ -30,22 +30,30 @@ const PDFDocumentPreview: React.FC<PDFDocumentPreviewProps> = ({
   
   // Initialize expanded state for all documents
   useEffect(() => {
-    const expandedState: Record<string, boolean> = {};
-    
     // Default to expanded for small numbers of documents
     const defaultExpanded = pdfFiles.length <= 5;
     
-    pdfFiles.forEach(file => {
-      // Initialize as expanded if not already set
-      if (expandedDocuments[file.id] === undefined) {
-        expandedState[file.id] = defaultExpanded;
-      } else {
-        expandedState[file.id] = expandedDocuments[file.id];
-      }
+    setExpandedDocuments(prev => {
+      const newExpandedState: Record<string, boolean> = {};
+      
+      pdfFiles.forEach(file => {
+        // Initialize as expanded if not already set in the previous state
+        if (prev[file.id] === undefined) {
+          newExpandedState[file.id] = defaultExpanded;
+        } else {
+          newExpandedState[file.id] = prev[file.id];
+        }
+      });
+      
+      // Only update state if there are actual changes
+      const hasChanges = pdfFiles.some(file => 
+        prev[file.id] === undefined || 
+        !Object.keys(prev).includes(file.id)
+      );
+      
+      return hasChanges ? newExpandedState : prev;
     });
-    
-    setExpandedDocuments(expandedState);
-  }, [pdfFiles, expandedDocuments]);
+  }, [pdfFiles]);
   
   // Toggle view mode between grid and list
   const toggleViewMode = useCallback(() => {

@@ -10,6 +10,9 @@ interface State {
   error?: Error;
 }
 
+// Check if in browser environment
+const isBrowser = typeof window !== 'undefined';
+
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -24,6 +27,12 @@ class ErrorBoundary extends Component<Props, State> {
     // eslint-disable-next-line no-console
     console.error('Error caught by ErrorBoundary:', error, errorInfo);
   }
+
+  handleRefresh = (): void => {
+    if (isBrowser) {
+      window.location.reload();
+    }
+  };
 
   render(): ReactNode {
     if (this.state.hasError) {
@@ -43,7 +52,7 @@ class ErrorBoundary extends Component<Props, State> {
           </details>
           <button
             className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded"
-            onClick={() => window.location.reload()}
+            onClick={this.handleRefresh}
           >
             Refresh Page
           </button>

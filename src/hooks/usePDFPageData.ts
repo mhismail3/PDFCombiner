@@ -68,15 +68,31 @@ export const usePDFPageData = (
       return;
     }
     
+    // Check if data is valid
+    if (pdfData.byteLength === 0) {
+      setError('PDF data is empty');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Create a stable reference to the PDF data
+    const pdfDataRef = pdfData;
+    
+    // Store a flag to track if this effect is still active
+    let isMounted = true;
+    
     setIsLoading(true);
     setError(null);
     
     // Use the worker to extract page data
     const extract = () => {
       return extractPageData(
-        pdfData,
+        pdfDataRef,
         options?.includeTextContent || false,
         (result) => {
+          // Only update state if the component is still mounted
+          if (!isMounted) return;
+          
           // Set document info
           setDocumentInfo(result.docInfo);
           
@@ -90,6 +106,9 @@ export const usePDFPageData = (
           setIsLoading(false);
         },
         (pageNumber, totalPages, pageData) => {
+          // Only update state if the component is still mounted
+          if (!isMounted) return;
+          
           // Call progress callback if provided
           if (options?.onProgress) {
             options.onProgress(pageNumber, totalPages, pageData);
@@ -101,9 +120,13 @@ export const usePDFPageData = (
     const cleanup = extract();
     
     return () => {
+      // Mark component as unmounted
+      isMounted = false;
+      
+      // Clean up worker operation
       if (cleanup) cleanup();
     };
-  }, [pdfData, options?.includeTextContent, options?.onProgress, extractPageData]);
+  }, [pdfData?.byteLength, options?.includeTextContent, options?.onProgress, extractPageData]);
   
   /**
    * Get a specific page's data by page number

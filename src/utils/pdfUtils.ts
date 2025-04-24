@@ -9,7 +9,7 @@ import { showNotification } from '../store/slices/uiSlice';
 import { store } from '../store';
 
 // Initialize PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf-worker/pdf.worker.min.mjs';
 
 /**
  * Check if a file is a PDF
@@ -57,12 +57,24 @@ const logError = (message: string, error: unknown): void => {
 };
 
 /**
+ * Clone an ArrayBuffer to prevent detached buffer issues
+ */
+const cloneArrayBuffer = (buffer: ArrayBuffer): ArrayBuffer => {
+  const clone = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(clone).set(new Uint8Array(buffer));
+  return clone;
+};
+
+/**
  * Generate a thumbnail for a PDF file
  */
 export const generatePDFThumbnail = async (pdfData: ArrayBuffer): Promise<string> => {
   try {
+    // Clone the ArrayBuffer to prevent detached buffer issues
+    const clonedData = cloneArrayBuffer(pdfData);
+    
     // Load the PDF document
-    const loadingTask = pdfjs.getDocument({ data: pdfData });
+    const loadingTask = pdfjs.getDocument({ data: clonedData });
     const pdf = await loadingTask.promise;
 
     // Get the first page
@@ -102,7 +114,10 @@ export const generatePDFThumbnail = async (pdfData: ArrayBuffer): Promise<string
  */
 export const getPDFPageCount = async (pdfData: ArrayBuffer): Promise<number> => {
   try {
-    const loadingTask = pdfjs.getDocument({ data: pdfData });
+    // Clone the ArrayBuffer to prevent detached buffer issues
+    const clonedData = cloneArrayBuffer(pdfData);
+    
+    const loadingTask = pdfjs.getDocument({ data: clonedData });
     const pdf = await loadingTask.promise;
     return pdf.numPages;
   } catch (error) {
@@ -116,7 +131,10 @@ export const getPDFPageCount = async (pdfData: ArrayBuffer): Promise<number> => 
  */
 export const validatePDFContent = async (pdfData: ArrayBuffer): Promise<ValidationResult> => {
   try {
-    const loadingTask = pdfjs.getDocument({ data: pdfData });
+    // Clone the ArrayBuffer to prevent detached buffer issues
+    const clonedData = cloneArrayBuffer(pdfData);
+    
+    const loadingTask = pdfjs.getDocument({ data: clonedData });
     const pdf = await loadingTask.promise;
 
     if (pdf.numPages < 1) {

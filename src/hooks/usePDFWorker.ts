@@ -30,6 +30,16 @@ export interface PDFPageInfo {
 }
 
 /**
+ * Helper function to clone an ArrayBuffer to prevent detached buffer errors
+ */
+function cloneArrayBuffer(buffer: ArrayBuffer): ArrayBuffer {
+  // Create a new ArrayBuffer and copy the contents
+  const clone = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(clone).set(new Uint8Array(buffer));
+  return clone;
+}
+
+/**
  * Hook to interface with the PDF worker
  */
 export const usePDFWorker = () => {
@@ -139,8 +149,63 @@ export const usePDFWorker = () => {
     // Add event listener
     workerRef.current.addEventListener('message', handleMessage);
     
-    // Send operation to worker
-    workerRef.current.postMessage(operation);
+    try {
+      // Clone operation data to prevent detached buffer issues
+      let clonedOperation: PDFWorkerOperation;
+      
+      switch (operation.type) {
+        case 'MERGE_PDFS':
+          clonedOperation = {
+            type: 'MERGE_PDFS',
+            pdfFiles: operation.pdfFiles.map(file => ({
+              name: file.name,
+              data: cloneArrayBuffer(file.data)
+            }))
+          };
+          break;
+          
+        case 'EXTRACT_PAGES':
+          clonedOperation = {
+            type: 'EXTRACT_PAGES',
+            pdfData: cloneArrayBuffer(operation.pdfData),
+            pageIndexes: [...operation.pageIndexes]
+          };
+          break;
+          
+        case 'GENERATE_THUMBNAILS':
+          clonedOperation = {
+            type: 'GENERATE_THUMBNAILS',
+            pdfData: cloneArrayBuffer(operation.pdfData),
+            pageCount: operation.pageCount,
+            options: operation.options ? { ...operation.options } : undefined
+          };
+          break;
+          
+        case 'EXTRACT_PAGE_DATA':
+          clonedOperation = {
+            type: 'EXTRACT_PAGE_DATA',
+            pdfData: cloneArrayBuffer(operation.pdfData),
+            includeTextContent: operation.includeTextContent
+          };
+          break;
+          
+        default:
+          throw new Error('Unknown operation type');
+      }
+      
+      // Send cloned operation to worker
+      workerRef.current.postMessage(clonedOperation);
+    } catch (error) {
+      // Handle any cloning errors
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(errorMessage);
+      setIsProcessing(false);
+      
+      // Clean up event listener
+      if (workerRef.current) {
+        workerRef.current.removeEventListener('message', handleMessage);
+      }
+    }
     
     // Return a function to cancel the operation
     return () => {
@@ -149,7 +214,7 @@ export const usePDFWorker = () => {
       }
       setIsProcessing(false);
     };
-  }, []);
+  }, [workerRef]);
   
   /**
    * Merge multiple PDFs into a single PDF

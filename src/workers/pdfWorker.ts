@@ -108,67 +108,85 @@ async function handleGenerateThumbnails(
   options?: { width?: number; height?: number; quality?: number }
 ): Promise<void> {
   try {
+    // Validate PDF data
+    if (!pdfData || pdfData.byteLength === 0) {
+      throw new Error('Invalid PDF data: Empty buffer');
+    }
+    
     // Import pdfjs at runtime to avoid issues with web workers
     const pdfjs = await import('pdfjs-dist');
     
     // Set worker source
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const workerPath = process.env.NODE_ENV === 'development' 
+      ? '/pdf-worker/pdf.worker.mjs'
+      : '/pdf-worker/pdf.worker.min.mjs';
+      
+    pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
     
-    // Load the PDF
-    const loadingTask = pdfjs.getDocument({ data: pdfData });
-    const pdf = await loadingTask.promise;
-    
-    // Process each page
-    for (let i = 1; i <= pageCount; i++) {
-      try {
-        // Get the page
-        const page = await pdf.getPage(i);
-        
-        // Set scale - if width and height are specified, calculate scale to fit
-        let scale = 0.5; // Default scale
-        
-        if (options && (options.width || options.height)) {
-          const viewport = page.getViewport({ scale: 1.0 });
-          
-          if (options.width) {
-            scale = options.width / viewport.width;
-          } else if (options.height) {
-            scale = options.height / viewport.height;
-          }
-        }
-        
-        // Get the viewport with the calculated scale
-        const viewport = page.getViewport({ scale });
-        
-        // Instead of generating the actual thumbnails in the worker,
-        // we'll send back the PDF data with page number and viewport dimensions
-        // The main thread will handle the actual rendering
-        self.postMessage({
-          type: 'THUMBNAIL_PROGRESS',
-          pageNumber: i,
-          totalPages: pageCount,
-          pageInfo: {
-            pageNumber: i,
-            width: viewport.width,
-            height: viewport.height,
-            scale: scale
-          }
-        } as WorkerResponse);
-      } catch (pageError) {
-        // Log error but continue with other pages
-        console.error(`Error processing page ${i}:`, pageError);
-        self.postMessage({
-          type: 'ERROR',
-          error: `Failed to process page ${i}: ${pageError instanceof Error ? pageError.message : String(pageError)}`
-        } as WorkerResponse);
+    // Load the PDF with additional try/catch for better error handling
+    try {
+      const loadingTask = pdfjs.getDocument({ data: pdfData });
+      const pdf = await loadingTask.promise;
+      
+      // Verify page count matches expected count
+      if (pdf.numPages !== pageCount) {
+        console.warn(`Expected ${pageCount} pages but PDF has ${pdf.numPages} pages`);
       }
+      
+      // Process each page
+      for (let i = 1; i <= pdf.numPages; i++) {
+        try {
+          // Get the page
+          const page = await pdf.getPage(i);
+          
+          // Set scale - if width and height are specified, calculate scale to fit
+          let scale = 0.5; // Default scale
+          
+          if (options && (options.width || options.height)) {
+            const viewport = page.getViewport({ scale: 1.0 });
+            
+            if (options.width) {
+              scale = options.width / viewport.width;
+            } else if (options.height) {
+              scale = options.height / viewport.height;
+            }
+          }
+          
+          // Get the viewport with the calculated scale
+          const viewport = page.getViewport({ scale });
+          
+          // Instead of generating the actual thumbnails in the worker,
+          // we'll send back the PDF data with page number and viewport dimensions
+          // The main thread will handle the actual rendering
+          self.postMessage({
+            type: 'THUMBNAIL_PROGRESS',
+            pageNumber: i,
+            totalPages: pageCount,
+            pageInfo: {
+              pageNumber: i,
+              width: viewport.width,
+              height: viewport.height,
+              scale: scale
+            }
+          } as WorkerResponse);
+        } catch (pageError) {
+          // Log error but continue with other pages
+          console.error(`Error processing page ${i}:`, pageError);
+          self.postMessage({
+            type: 'ERROR',
+            error: `Failed to process page ${i}: ${pageError instanceof Error ? pageError.message : String(pageError)}`
+          } as WorkerResponse);
+        }
+      }
+      
+      // Send completion message
+      self.postMessage({
+        type: 'THUMBNAILS_COMPLETE',
+        result: [] // We're not actually generating thumbnails in the worker now
+      } as WorkerResponse);
+    } catch (loadingError) {
+      throw new Error(`Failed to load PDF: ${loadingError instanceof Error ? loadingError.message : loadingError}`);
     }
-    
-    // Send completion message
-    self.postMessage({
-      type: 'THUMBNAILS_COMPLETE',
-      result: [] // We're not actually generating thumbnails in the worker now
-    } as WorkerResponse);
   } catch (error) {
     throw new Error(`Failed to process PDF pages: ${error instanceof Error ? error.message : error}`);
   }
@@ -182,87 +200,100 @@ async function handleExtractPageData(
   includeTextContent: boolean = false
 ): Promise<void> {
   try {
+    // Validate PDF data
+    if (!pdfData || pdfData.byteLength === 0) {
+      throw new Error('Invalid PDF data: Empty buffer');
+    }
+    
     // Import pdfjs at runtime to avoid issues with web workers
     const pdfjs = await import('pdfjs-dist');
     
     // Set worker source
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const workerPath = process.env.NODE_ENV === 'development' 
+      ? '/pdf-worker/pdf.worker.mjs'
+      : '/pdf-worker/pdf.worker.min.mjs';
+      
+    pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
     
-    // Load the PDF
-    const loadingTask = pdfjs.getDocument({ data: pdfData });
-    const pdf = await loadingTask.promise;
-    
-    // Get document info and metadata
-    const pageCount = pdf.numPages;
-    const metadata = await pdf.getMetadata();
-    
-    // Send initial document info
-    const docInfo = {
-      pageCount,
-      metadata: metadata.info || {},
-      metadataXML: metadata.metadata ? metadata.metadata.toString() : null
-    };
-    
-    // Process each page
-    const pagesData = [];
-    
-    for (let i = 1; i <= pageCount; i++) {
-      try {
-        // Get the page
-        const page = await pdf.getPage(i);
-        
-        // Get viewport to determine dimensions
-        const viewport = page.getViewport({ scale: 1.0 });
-        
-        // Initialize page data
-        const pageData: any = {
-          pageNumber: i,
-          dimensions: {
-            width: viewport.width,
-            height: viewport.height
-          }
-        };
-        
-        // Extract text content if requested
-        if (includeTextContent) {
-          const textContent = await page.getTextContent();
-          let fullText = '';
-          
-          // Combine text items with spaces
-          for (const item of textContent.items) {
-            if ('str' in item) {
-              fullText += item.str + ' ';
-            }
-          }
-          
-          pageData.textContent = fullText.trim();
-        }
-        
-        // Add to pages data
-        pagesData.push(pageData);
-        
-        // Send progress update with the page data
-        self.postMessage({
-          type: 'PAGE_DATA_PROGRESS',
-          pageNumber: i,
-          totalPages: pageCount,
-          pageData
-        } as WorkerResponse);
-      } catch (pageError) {
-        // Log error but continue with other pages
-        console.error(`Error extracting data from page ${i}:`, pageError);
-      }
-    }
-    
-    // Send all page data back to main thread
-    self.postMessage({
-      type: 'PAGE_DATA_COMPLETE',
-      result: {
+    // Load the PDF with better error handling
+    try {
+      const loadingTask = pdfjs.getDocument({ data: pdfData });
+      const pdf = await loadingTask.promise;
+      
+      // Get document info and metadata
+      const pageCount = pdf.numPages;
+      const metadata = await pdf.getMetadata();
+      
+      // Send initial document info
+      const docInfo = {
         pageCount,
-        docInfo,
-        pagesData
+        metadata: metadata.info || {},
+        metadataXML: metadata.metadata ? metadata.metadata.toString() : null
+      };
+      
+      // Process each page
+      const pagesData = [];
+      
+      for (let i = 1; i <= pageCount; i++) {
+        try {
+          // Get the page
+          const page = await pdf.getPage(i);
+          
+          // Get viewport to determine dimensions
+          const viewport = page.getViewport({ scale: 1.0 });
+          
+          // Initialize page data
+          const pageData: any = {
+            pageNumber: i,
+            dimensions: {
+              width: viewport.width,
+              height: viewport.height
+            }
+          };
+          
+          // Extract text content if requested
+          if (includeTextContent) {
+            const textContent = await page.getTextContent();
+            let fullText = '';
+            
+            // Combine text items with spaces
+            for (const item of textContent.items) {
+              if ('str' in item) {
+                fullText += item.str + ' ';
+              }
+            }
+            
+            pageData.textContent = fullText.trim();
+          }
+          
+          // Add to pages data
+          pagesData.push(pageData);
+          
+          // Send progress update with the page data
+          self.postMessage({
+            type: 'PAGE_DATA_PROGRESS',
+            pageNumber: i,
+            totalPages: pageCount,
+            pageData
+          } as WorkerResponse);
+        } catch (pageError) {
+          // Log error but continue with other pages
+          console.error(`Error extracting data from page ${i}:`, pageError);
+        }
       }
-    } as WorkerResponse);
+      
+      // Send all page data back to main thread
+      self.postMessage({
+        type: 'PAGE_DATA_COMPLETE',
+        result: {
+          pageCount,
+          docInfo,
+          pagesData
+        }
+      } as WorkerResponse);
+    } catch (loadingError) {
+      throw new Error(`Failed to load PDF: ${loadingError instanceof Error ? loadingError.message : loadingError}`);
+    }
   } catch (error) {
     throw new Error(`Failed to extract PDF data: ${error instanceof Error ? error.message : error}`);
   }

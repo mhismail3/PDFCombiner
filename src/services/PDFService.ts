@@ -1,6 +1,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import { showNotification } from '../store/slices/uiSlice';
 import { store } from '../store';
+import { getPdfWorkerSrc, PDF_LOAD_OPTIONS, CACHE_EXPIRATION_MS } from '../config/pdfjs-config';
 
 // Define types for document loading options
 export interface PDFLoadOptions {
@@ -34,7 +35,8 @@ interface ThumbnailCache {
 export class PDFService {
   private worker: pdfjs.PDFWorker | null = null;
   private thumbnailCache: ThumbnailCache = {};
-  private cacheExpirationMs = 1000 * 60 * 10; // 10 minutes
+  private cacheExpirationMs = CACHE_EXPIRATION_MS;
+  private workerInitialized = false;
   
   /**
    * Initialize the PDF service and set up the worker
@@ -47,13 +49,36 @@ export class PDFService {
    * Initialize the PDF.js worker
    */
   private initializeWorker(): void {
-    if (!this.worker) {
-      // Use a CDN URL for the worker instead of requiring it
-      pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      
-      // Create a new worker
-      this.worker = new pdfjs.PDFWorker();
+    if (!this.worker && !this.workerInitialized) {
+      try {
+        // Initialize the worker for better performance
+        const workerSrc = getPdfWorkerSrc();
+        pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+        
+        // Create a new worker with properly typed parameters
+        const workerConfig: any = { name: 'pdf-worker' };
+        this.worker = new pdfjs.PDFWorker(workerConfig);
+        this.workerInitialized = true;
+        
+        console.log(`PDF.js worker initialized with: ${workerSrc}`);
+      } catch (error) {
+        console.error('Failed to initialize PDF.js worker:', error);
+        // Mark as initialized to prevent repeated attempts
+        this.workerInitialized = true;
+      }
     }
+  }
+  
+  /**
+   * Clone an ArrayBuffer to prevent detached buffer issues
+   * This creates a fresh copy of the ArrayBuffer that won't be affected by transfers
+   */
+  public cloneArrayBuffer(buffer: ArrayBuffer | ArrayBufferLike): ArrayBuffer {
+    // Create a new buffer with the same size
+    const clone = new ArrayBuffer(buffer.byteLength);
+    // Copy the contents from the source buffer to the new buffer
+    new Uint8Array(clone).set(new Uint8Array(buffer as ArrayBuffer));
+    return clone;
   }
   
   /**
@@ -67,15 +92,29 @@ export class PDFService {
       // Make sure worker is initialized
       this.initializeWorker();
       
-      // Create loading task with appropriate source
-      const loadingTask = pdfjs.getDocument({
+      // Create a defensive copy of the ArrayBuffer to prevent detached buffer errors
+      let data: ArrayBuffer | Uint8Array | undefined;
+      if (source instanceof ArrayBuffer) {
+        // Clone the ArrayBuffer to prevent detached buffer issues
+        data = this.cloneArrayBuffer(source);
+      } else if (source instanceof Uint8Array) {
+        // Clone the Uint8Array to prevent detached buffer issues
+        const clonedBuffer = this.cloneArrayBuffer(source.buffer);
+        data = new Uint8Array(clonedBuffer);
+      } else {
+        data = undefined;
+      }
+      
+      // Merge provided options with defaults
+      const mergedOptions = {
+        ...PDF_LOAD_OPTIONS,
+        ...options,
         url: typeof source === 'string' || source instanceof URL ? source : undefined,
-        data: source instanceof ArrayBuffer || source instanceof Uint8Array ? source : undefined,
-        password: options.password,
-        withCredentials: options.withCredentials,
-        cMapUrl: options.cMapUrl || 'https://unpkg.com/pdfjs-dist/cmaps/',
-        cMapPacked: options.cMapPacked !== undefined ? options.cMapPacked : true,
-      });
+        data,
+      };
+      
+      // Create loading task with appropriate source
+      const loadingTask = pdfjs.getDocument(mergedOptions);
       
       // Return the document promise
       return await loadingTask.promise;
@@ -237,8 +276,19 @@ export class PDFService {
    */
   async validatePDF(data: ArrayBuffer): Promise<{ isValid: boolean; error?: string }> {
     try {
+      // Check if data is valid
+      if (!data || data.byteLength === 0) {
+        console.error('Invalid PDF: ArrayBuffer is empty or null');
+        return { isValid: false, error: 'The PDF file is empty or invalid.' };
+      }
+      
+      console.log(`Validating PDF with ${data.byteLength} bytes`);
+      
+      // Try to load the document
       const document = await this.loadDocument(data);
       const pageCount = await this.getPageCount(document);
+      
+      console.log(`PDF validation successful, found ${pageCount} pages`);
       
       if (pageCount < 1) {
         return { isValid: false, error: 'The PDF file does not contain any pages.' };
@@ -249,12 +299,23 @@ export class PDFService {
       
       return { isValid: true };
     } catch (error) {
-      return { 
-        isValid: false, 
-        error: error instanceof Error 
-          ? `Invalid PDF content: ${error.message}` 
-          : 'Could not parse PDF content. The file may be corrupted or password protected.' 
-      };
+      // Log the error in more detail
+      console.error('PDF validation failed:', error);
+      
+      // Provide a more specific error message
+      let errorMessage = 'Could not parse PDF content. The file may be corrupted or password protected.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('password')) {
+          errorMessage = 'This PDF is password protected. Please provide the password.';
+        } else if (error.message.includes('Invalid PDF')) {
+          errorMessage = 'Invalid PDF structure. The file might be corrupted.';
+        } else {
+          errorMessage = `Invalid PDF content: ${error.message}`;
+        }
+      }
+      
+      return { isValid: false, error: errorMessage };
     }
   }
   

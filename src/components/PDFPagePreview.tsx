@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, memo } from 'react';
 import { usePDFThumbnails } from '../hooks/usePDFThumbnails';
 import { usePDFPageData } from '../hooks/usePDFPageData';
 import PDFPageThumbnail from './PDFPageThumbnail';
@@ -28,7 +28,10 @@ const PDFPagePreview: React.FC<PDFPagePreviewProps> = ({
   showPageNumbers = true
 }) => {
   // State for grid view settings
-  const [gridGap, setGridGap] = useState(8);
+  const [gridGap] = useState(8);
+  
+  // Create a stable reference to the PDF data byteLength
+  const pdfDataByteLength = useMemo(() => pdfData?.byteLength, [pdfData?.byteLength]);
   
   // Load thumbnails and page data
   const { 
@@ -67,6 +70,12 @@ const PDFPagePreview: React.FC<PDFPagePreviewProps> = ({
   const isLoading = isThumbnailLoading || isDataLoading;
   const error = thumbnailError || dataError;
   
+  // Generate array of page numbers once
+  const pageNumbers = useMemo(() => {
+    if (pageCount === 0) return [];
+    return Array.from({ length: pageCount }, (_, i) => i + 1);
+  }, [pageCount]);
+  
   if (isLoading && pageCount === 0) {
     return (
       <div className={`flex items-center justify-center h-40 bg-gray-100 dark:bg-gray-800 rounded-lg ${className}`}>
@@ -94,9 +103,6 @@ const PDFPagePreview: React.FC<PDFPagePreviewProps> = ({
       </div>
     );
   }
-  
-  // Create an array of page numbers from 1 to pageCount
-  const pageNumbers = Array.from({ length: pageCount }, (_, i) => i + 1);
   
   return (
     <div className={`pdf-page-preview ${className}`}>
@@ -144,4 +150,5 @@ const PDFPagePreview: React.FC<PDFPagePreviewProps> = ({
   );
 };
 
-export default PDFPagePreview; 
+// Use memo to prevent unnecessary re-renders
+export default memo(PDFPagePreview); 

@@ -116,7 +116,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     <NotificationContext.Provider value={value}>
       {children}
       {/* Notification container */}
-      <div className="fixed top-0 right-0 p-4 z-50 space-y-4 max-h-screen overflow-hidden pointer-events-none">
+      <div className="fixed top-0 right-0 p-4 z-50 space-y-4 max-h-screen overflow-hidden pointer-events-none flex flex-col items-end">
         {state.notifications.map(notification => (
           <Notification key={notification.id} {...notification} onDismiss={removeNotification} />
         ))}
