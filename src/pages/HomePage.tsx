@@ -54,10 +54,19 @@ const HomePage: React.FC = () => {
 
   // Process uploaded files to generate thumbnails and get page counts
   useEffect(() => {
+    // Create a ref to track files being processed in this effect run
+    const processingFileIds = new Set<string>();
+    
     const processPendingFiles = async () => {
       // Find files that are in 'loading' state and process them
-      const pendingFiles = files.filter(file => file.status === 'loading');
+      const pendingFiles = files.filter(file => 
+        file.status === 'loading' && !processingFileIds.has(file.id)
+      );
+      
       if (pendingFiles.length === 0) return;
+
+      // Mark all these files as being processed in this run
+      pendingFiles.forEach(file => processingFileIds.add(file.id));
 
       for (const file of pendingFiles) {
         try {
@@ -148,7 +157,9 @@ const HomePage: React.FC = () => {
       }
 
       // Reset retrying state when processing is complete
-      setRetryingFileId(null);
+      if (retryingFileId) {
+        setRetryingFileId(null);
+      }
     };
 
     processPendingFiles();
@@ -157,7 +168,7 @@ const HomePage: React.FC = () => {
   // Handle file upload
   const handleFileUpload = useCallback(
     async (uploadedFiles: FileList) => {
-      if (uploadedFiles.length === 0) return;
+      if (!uploadedFiles.length) return;
 
       try {
         // Set uploading state
@@ -166,38 +177,74 @@ const HomePage: React.FC = () => {
         // Process each PDF file
         const totalFiles = uploadedFiles.length;
         const newFiles = [];
+        
+        // Log to confirm we're receiving multiple files with their names
+        console.log(`HomePage: Received ${totalFiles} files:`, 
+          Array.from({ length: totalFiles })
+            .map((_, i) => uploadedFiles[i]?.name || uploadedFiles.item?.(i)?.name || 'unknown')
+            .join(', ')
+        );
 
+        // Ensure we can iterate over uploadedFiles
+        // The most reliable way to access all files is to use both array indexing and item() method
+        const filesToProcess = [];
         for (let i = 0; i < totalFiles; i++) {
-          const file = uploadedFiles[i];
-
-          // Update progress
-          dispatch(setUploadProgress(Math.round((i / totalFiles) * 100)));
-
-          // Read file as array buffer
-          const arrayBuffer = await fileToArrayBuffer(file);
-
-          newFiles.push({
-            id: uuidv4(),
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            lastModified: file.lastModified,
-            data: arrayBuffer,
-            preview: null, // We'll generate thumbnails in the useEffect
-            pageCount: 0, // We'll get this from PDF.js in the useEffect
-            status: 'loading' as const,
-            selected: true, // Default to selected
-            processingProgress: 0, // Start at 0% progress
-          });
+          const file = uploadedFiles[i] || uploadedFiles.item?.(i);
+          if (file) {
+            filesToProcess.push(file);
+          }
         }
 
-        // Complete upload
-        dispatch(setUploadProgress(100));
-        dispatch(addPDFFiles(newFiles));
-        dispatch(setIsUploading(false));
-        setError(null);
+        console.log(`HomePage: Processing ${filesToProcess.length} files after conversion`);
 
-        // Notification is now handled by the FileUploadArea component
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const file = filesToProcess[i];
+          
+          if (!file) {
+            console.warn(`Invalid file at index ${i}`);
+            continue;
+          }
+
+          // Update progress
+          dispatch(setUploadProgress(Math.round((i / filesToProcess.length) * 100)));
+
+          try {
+            // Read file as array buffer
+            const arrayBuffer = await fileToArrayBuffer(file);
+            console.log(`Successfully read file: ${file.name} (${formatFileSize(file.size)})`);
+
+            newFiles.push({
+              id: uuidv4(),
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              lastModified: file.lastModified,
+              data: arrayBuffer,
+              preview: null, // We'll generate thumbnails in the useEffect
+              pageCount: 0, // We'll get this from PDF.js in the useEffect
+              status: 'loading' as const,
+              selected: true, // Default to selected
+              processingProgress: 0, // Start at 0% progress
+            });
+          } catch (fileError) {
+            console.error(`Error processing file ${file.name}:`, fileError);
+            // Continue with other files even if one fails
+          }
+        }
+
+        // Only update state if we have files to add
+        if (newFiles.length > 0) {
+          console.log(`HomePage: Adding ${newFiles.length} files to store`);
+          // Complete upload
+          dispatch(setUploadProgress(100));
+          dispatch(addPDFFiles(newFiles));
+          dispatch(setIsUploading(false));
+          setError(null);
+        } else {
+          dispatch(setIsUploading(false));
+          setError('No files could be processed. Please try again with valid PDF files.');
+          notifications.showError('No files could be processed', 'Upload Error');
+        }
       } catch (err) {
         dispatch(setIsUploading(false));
         setError('Error processing PDF files. Please try again.');

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePDFProcessor } from '../hooks/usePDFProcessor';
 import { usePDFThumbnails } from '../hooks/usePDFThumbnails';
-import PDFPageThumbnail from './PDFPageThumbnail';
+import PDFThumbnailRenderer from './PDFThumbnailRenderer';
 
 interface PDFProgressiveViewProps {
   pdfData: ArrayBuffer;
@@ -470,16 +470,17 @@ const PDFProgressiveView: React.FC<PDFProgressiveViewProps> = ({
         >
           {/* Only render thumbnails that are in our visible range */}
           {visiblePageNumbers.map(pageNumber => (
-            <PDFPageThumbnail
+            <PDFThumbnailRenderer
               key={pageNumber}
               pdfData={pdfDataRef.current}
               pageNumber={pageNumber}
-              pageCount={pageCount}
               width={thumbnailWidth}
               height={thumbnailHeight}
               selected={selectedPages.includes(pageNumber)}
               onSelect={memoizedPageSelectHandler}
               onPreview={memoizedPreviewHandler}
+              priority={pageNumber === currentPage || Math.abs(pageNumber - currentPage) < 5}
+              quality={0.7}
             />
           ))}
           

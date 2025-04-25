@@ -42,12 +42,29 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
     async (files: FileList) => {
       if (!files.length) return;
 
+      // Debug info - log the file list we received
+      console.log(`Validating ${files.length} files:`, 
+        Array.from(files).map(f => f.name).join(', '));
+
       // Filter for PDF files and check size
       const validFiles: File[] = [];
       const invalidFiles: { file: File; validationResult: any }[] = [];
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      // Convert FileList to Array for safer iteration
+      const filesArray = Array.from({ length: files.length }).map((_, i) => {
+        // Ensure we can access each file regardless of browser quirks
+        return files[i] || files.item?.(i);
+      }).filter(Boolean) as File[];
+      
+      console.log(`Processing ${filesArray.length} files after conversion to array`);
+
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+        
+        if (!file) {
+          console.warn(`Skipping null file at index ${i}`);
+          continue;
+        }
 
         // Perform full PDF validation
         const validationResult = await FileValidator.validatePdfFile(file, maxFileSize);
@@ -65,7 +82,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
 
       // Show error notification if there are invalid files
       if (invalidFiles.length > 0) {
-        const totalFiles = files.length;
+        const totalFiles = filesArray.length;
         
         if (invalidFiles.length === totalFiles) {
           // All files are invalid
@@ -104,17 +121,54 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         }
       }
 
-      // If we have valid files, create a new FileList-like object
+      // Final log of how many files passed validation
+      console.log(`${validFiles.length} valid files after validation`);
+
+      // If we have valid files, pass them to the callback
       if (validFiles.length > 0) {
-        // Create a DataTransfer object to create a new FileList
-        const dataTransfer = new DataTransfer();
-        validFiles.forEach(file => dataTransfer.items.add(file));
+        // Instead of using DataTransfer which has browser compatibility issues,
+        // directly pass the valid files to the callback
         
         // Show success notification
         notifications.showFileUploadSuccess(validFiles.length);
         
-        // Call the onFilesSelected callback with the valid files
-        onFilesSelected(dataTransfer.files);
+        // Call the onFilesSelected callback with the valid files - using a compatibility approach
+        if (validFiles.length === 1) {
+          // For single file, just use a simple FileList-like object
+          const singleFileList = {
+            0: validFiles[0],
+            length: 1,
+            item(index: number) { 
+              return index === 0 ? validFiles[0] : null; 
+            }
+          };
+          // Cast to unknown first to satisfy TypeScript
+          onFilesSelected(singleFileList as unknown as FileList);
+        } else {
+          try {
+            // Try the modern approach with DataTransfer API
+            const dataTransfer = new DataTransfer();
+            validFiles.forEach(file => dataTransfer.items.add(file));
+            onFilesSelected(dataTransfer.files);
+          } catch (error) {
+            // Fallback for browsers that don't support DataTransfer well
+            // Create a FileList-like object with proper iterator support
+            const fileListLike = {
+              ...Object.fromEntries(validFiles.map((file, idx) => [idx, file])),
+              length: validFiles.length,
+              item(index: number) { 
+                return index >= 0 && index < validFiles.length ? validFiles[index] : null; 
+              },
+              [Symbol.iterator]: function* () {
+                for (let i = 0; i < validFiles.length; i++) {
+                  yield validFiles[i];
+                }
+              }
+            };
+            // Cast to unknown first to satisfy TypeScript
+            onFilesSelected(fileListLike as unknown as FileList);
+          }
+        }
       }
     },
     [onFilesSelected, maxFileSize, notifications]
@@ -124,7 +178,26 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   const handleFileInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       if (!disabled && event.target.files && event.target.files.length > 0) {
-        validateAndHandleFiles(event.target.files);
+        // Log what we're seeing from the browser
+        console.log(`FileInput: Selected ${event.target.files.length} files`);
+        
+        // Make sure we properly handle the files
+        const files = event.target.files;
+        
+        // Create a proper copy in case browser reuses the FileList
+        try {
+          // Create a copy of the FileList to prevent issues with browser-based recycling
+          const filesCopy = new DataTransfer();
+          for (let i = 0; i < files.length; i++) {
+            filesCopy.items.add(files[i]);
+          }
+          validateAndHandleFiles(filesCopy.files);
+        } catch (error) {
+          // Fallback for browsers without DataTransfer API
+          console.log('Using fallback file handling');
+          validateAndHandleFiles(files);
+        }
+        
         // Reset the input value so the same file can be uploaded again if needed
         event.target.value = '';
       }
@@ -152,12 +225,21 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       if (disabled) return;
       
       // Check if the dragged items contain files
-      const containsFiles = Array.from(e.dataTransfer.items).some(
-        item => item.kind === 'file'
+      const items = Array.from(e.dataTransfer.items);
+      const containsFiles = items.some(item => item.kind === 'file');
+      
+      // Basic check for PDF files
+      const containsPdfs = items.some(item => 
+        item.kind === 'file' && 
+        (item.type === 'application/pdf' || item.type.includes('pdf'))
       );
       
       if (containsFiles) {
         setIsDragActive(true);
+        // If we detect non-PDF files, show invalid state
+        if (containsFiles && !containsPdfs && items.length > 0) {
+          setIsDragInvalid(true);
+        }
       }
     },
     [disabled]
@@ -168,24 +250,29 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       e.preventDefault();
       e.stopPropagation();
       
-      if (disabled || isDragActive) return;
+      if (disabled) return;
+      
+      // Always set drag active
+      setIsDragActive(true);
       
       // Check if the dragged items contain valid file types
-      const containsValidFiles = Array.from(e.dataTransfer.items).some(item => {
-        return item.kind === 'file' && 
-               (acceptedFileTypes === '*' || 
-                acceptedFileTypes.split(',').includes(item.type));
-      });
+      const items = Array.from(e.dataTransfer.items);
+      const containsFiles = items.some(item => item.kind === 'file');
       
-      if (containsValidFiles) {
-        setIsDragActive(true);
-        setIsDragInvalid(false);
-      } else {
-        setIsDragActive(true);
+      // Try to detect PDF files in the drag event
+      const containsPdfs = items.some(item => 
+        item.kind === 'file' && 
+        (item.type === 'application/pdf' || item.type.includes('pdf'))
+      );
+      
+      // Set invalid state if we have files but no PDFs detected
+      if (containsFiles && !containsPdfs && items.length > 0) {
         setIsDragInvalid(true);
+      } else {
+        setIsDragInvalid(false);
       }
     },
-    [disabled, isDragActive, acceptedFileTypes]
+    [disabled]
   );
 
   const handleDragLeave = useCallback(
@@ -212,22 +299,55 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
       
       if (disabled) return;
       
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        // If multiple is false, only take the first file
-        if (!multiple && e.dataTransfer.files.length > 1) {
-          // Create a new FileList with just the first file
+      if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) {
+        return;
+      }
+      
+      // Log the number of files being dropped for debugging
+      console.log(`Dropping ${e.dataTransfer.files.length} files:`, 
+        Array.from(e.dataTransfer.files).map(f => f.name).join(', '));
+      
+      // If multiple is false, only take the first file
+      if (!multiple && e.dataTransfer.files.length > 1) {
+        // Create a new FileList with just the first file
+        try {
           const firstFile = e.dataTransfer.files[0];
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(firstFile);
           
           validateAndHandleFiles(dataTransfer.files);
-          
-          // Show a notification that only the first file was accepted
-          notifications.showInfo(
-            'Multiple files were dropped, but only the first file was accepted since multiple selection is disabled.',
-            'Single File Mode'
-          );
-        } else {
+        } catch (error) {
+          // Fallback for browsers without DataTransfer support
+          const singleFileList = {
+            0: e.dataTransfer.files[0],
+            length: 1,
+            item(index: number) { 
+              return index === 0 ? e.dataTransfer.files[0] : null; 
+            },
+            [Symbol.iterator]: function* () {
+              yield e.dataTransfer.files[0];
+            }
+          };
+          validateAndHandleFiles(singleFileList as unknown as FileList);
+        }
+        
+        // Show a notification that only the first file was accepted
+        notifications.showInfo(
+          'Multiple files were dropped, but only the first file was accepted since multiple selection is disabled.',
+          'Single File Mode'
+        );
+      } else {
+        // Process all files (multiple is true)
+        // Clone the FileList to avoid any issues with browser-specific handling
+        try {
+          const filesCopy = new DataTransfer();
+          for (let i = 0; i < e.dataTransfer.files.length; i++) {
+            filesCopy.items.add(e.dataTransfer.files[i]);
+          }
+          validateAndHandleFiles(filesCopy.files);
+        } catch (error) {
+          // Fallback if DataTransfer is not supported
+          console.log('Using fallback for drag-drop handling');
           validateAndHandleFiles(e.dataTransfer.files);
         }
       }

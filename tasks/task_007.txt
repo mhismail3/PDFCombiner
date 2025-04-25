@@ -9,3 +9,75 @@ Implement drag-and-drop functionality for document reordering using React DnD or
 
 # Test Strategy:
 Test drag-and-drop reordering with mouse and touch interactions. Verify keyboard shortcuts work correctly. Ensure the final document order is correctly maintained in state. Test undo/redo functionality for reordering operations.
+
+# Subtasks:
+## 1. Set up React DnD library and basic document list component [done]
+### Dependencies: None
+### Description: Install and configure React DnD library and create the basic document list component structure that will support drag and drop functionality.
+### Details:
+1. Install React DnD and its HTML5 backend: `npm install react-dnd react-dnd-html5-backend`
+2. Set up DnD context provider in the application
+3. Create a DocumentList component to display the list of documents
+4. Implement a Document component that will be draggable
+5. Create initial state management for document order using React state or context
+6. Test the basic rendering of documents without drag functionality
+7. Ensure the component structure is accessible and works with screen readers
+
+## 2. Implement drag and drop functionality with visual indicators [done]
+### Dependencies: 7.1
+### Description: Add drag and drop capabilities to the document list with appropriate visual feedback during drag operations.
+### Details:
+1. Define drag sources for document items using React DnD's useDrag hook
+2. Implement drop targets using useDrops hook
+3. Create visual indicators for:
+   - Items being dragged (opacity change, shadow)
+   - Drop zones (highlighted areas, gap indicators)
+   - Invalid drop targets
+4. Add smooth CSS transitions for drag operations
+5. Implement the reordering logic when items are dropped
+6. Test drag and drop functionality across different positions in the list
+7. Ensure visual indicators are clear and provide good user feedback
+
+## 3. Implement document order state management and persistence [done]
+### Dependencies: 7.2
+### Description: Create a robust state management system for document order that persists changes and can be used for final PDF combination.
+### Details:
+1. Refine the state management approach (use Redux or Context API if not already implemented)
+2. Create actions/reducers for document reordering operations
+3. Implement functions to:
+   - Move documents up/down
+   - Insert documents at specific positions
+   - Remove documents from the sequence
+4. Add persistence of document order (localStorage or backend API)
+5. Create a mechanism to retrieve the current order for PDF combination
+6. Test state updates with various reordering scenarios
+7. Ensure state consistency across component re-renders
+
+## 4. Add keyboard shortcuts and accessibility features [done]
+### Dependencies: 7.3
+### Description: Implement keyboard shortcuts for document reordering and ensure the interface is fully accessible.
+### Details:
+1. Add keyboard shortcuts for:
+   - Moving documents up (Alt+Up or similar)
+   - Moving documents down (Alt+Down or similar)
+   - Moving to top/bottom of list
+2. Create a keyboard shortcut help modal or tooltip
+3. Implement focus management during keyboard operations
+4. Add ARIA attributes for drag and drop operations
+5. Ensure all interactive elements have appropriate roles and labels
+6. Test keyboard navigation thoroughly
+7. Verify accessibility with screen readers and automated testing tools
+
+## 5. Implement undo/redo functionality for reordering operations [done]
+### Dependencies: 7.3
+### Description: Create an undo/redo system that allows users to reverse or replay document reordering actions.
+### Details:
+1. Design a command pattern or history stack for tracking reordering operations
+2. Implement undo and redo functions that restore previous/next states
+3. Add keyboard shortcuts for undo (Ctrl+Z) and redo (Ctrl+Y or Ctrl+Shift+Z)
+4. Create UI buttons for undo/redo operations
+5. Add visual feedback when undo/redo is performed
+6. Implement state management for the history stack
+7. Test complex sequences of operations with undo/redo
+8. Ensure history state is properly maintained during session
+

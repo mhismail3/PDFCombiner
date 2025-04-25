@@ -28,9 +28,11 @@ const Notification: React.FC<NotificationProps> = ({
 }) => {
   const [visible, setVisible] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [progress, setProgress] = useState(100); // Track progress as state for better updates
   const timerRef = useRef<number | undefined>(undefined);
-  const remainingTimeRef = useRef<number | undefined>(undefined);
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number | undefined>(undefined);
+  const remainingTimeRef = useRef<number | undefined>(undefined);
 
   const dismiss = useCallback(() => {
     setVisible(false);
@@ -43,52 +45,95 @@ const Notification: React.FC<NotificationProps> = ({
     }
   }, [id, onDismiss]);
 
-  useEffect(() => {
-    if (!isBrowser) return;
+  // Function to update progress
+  const updateProgress = useCallback(() => {
+    if (!duration || !startTimeRef.current || !remainingTimeRef.current) return;
     
-    if (duration && duration > 0) {
-      startTimeRef.current = Date.now();
-      remainingTimeRef.current = duration;
-
-      const startTimer = () => {
-        return window.setTimeout(() => {
-          dismiss();
-        }, remainingTimeRef.current);
-      };
-
-      timerRef.current = startTimer();
+    // Calculate current progress
+    const elapsed = Date.now() - startTimeRef.current;
+    const remaining = Math.max(0, remainingTimeRef.current - elapsed);
+    const currentProgress = Math.max(0, (remaining / duration) * 100);
+    
+    setProgress(currentProgress);
+    
+    if (remaining <= 0) {
+      // Time's up, dismiss notification
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
+      dismiss();
+    } else {
+      // Continue the animation loop
+      animationFrameRef.current = requestAnimationFrame(updateProgress);
     }
+  }, [duration, dismiss]);
 
+  useEffect(() => {
+    if (!isBrowser || !duration || duration <= 0) return;
+    
+    // Initialize timer on mount
+    startTimeRef.current = Date.now();
+    remainingTimeRef.current = duration;
+    
+    // Start progress animation with requestAnimationFrame for smoother updates
+    animationFrameRef.current = requestAnimationFrame(updateProgress);
+    
+    // Also set a backup timeout for the actual dismissal
+    timerRef.current = window.setTimeout(() => {
+      dismiss();
+    }, duration);
+    
     return () => {
       if (timerRef.current !== undefined) {
         clearTimeout(timerRef.current);
       }
+      if (animationFrameRef.current !== undefined) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
-  }, [duration, dismiss]);
+  }, [duration, dismiss, updateProgress]);
 
-  const pauseTimer = () => {
-    if (!isBrowser) return;
+  const pauseTimer = useCallback(() => {
+    if (!isBrowser || !duration) return;
     
-    if (duration && timerRef.current !== undefined) {
+    // Clear the dismissal timeout
+    if (timerRef.current !== undefined) {
       clearTimeout(timerRef.current);
       timerRef.current = undefined;
-      const startTime = startTimeRef.current || 0;
-      remainingTimeRef.current = (remainingTimeRef.current || 0) - (Date.now() - startTime);
-      setIsPaused(true);
     }
-  };
-
-  const resumeTimer = () => {
-    if (!isBrowser) return;
     
-    if (duration && remainingTimeRef.current !== undefined) {
-      startTimeRef.current = Date.now();
-      timerRef.current = window.setTimeout(() => {
-        dismiss();
-      }, remainingTimeRef.current);
-      setIsPaused(false);
+    // Stop the animation frame
+    if (animationFrameRef.current !== undefined) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = undefined;
     }
-  };
+    
+    // Calculate remaining time
+    if (startTimeRef.current) {
+      const elapsed = Date.now() - startTimeRef.current;
+      remainingTimeRef.current = Math.max(0, (remainingTimeRef.current || duration) - elapsed);
+    }
+    
+    setIsPaused(true);
+  }, [duration]);
+
+  const resumeTimer = useCallback(() => {
+    if (!isBrowser || !duration || !remainingTimeRef.current) return;
+    
+    // Reset start time
+    startTimeRef.current = Date.now();
+    
+    // Resume animation frame
+    animationFrameRef.current = requestAnimationFrame(updateProgress);
+    
+    // Reset timeout for actual dismissal
+    timerRef.current = window.setTimeout(() => {
+      dismiss();
+    }, remainingTimeRef.current);
+    
+    setIsPaused(false);
+  }, [duration, dismiss, updateProgress]);
 
   // Determine icon and colors based on type
   const getTypeStyles = () => {
@@ -179,14 +224,6 @@ const Notification: React.FC<NotificationProps> = ({
 
   const typeStyles = getTypeStyles();
 
-  // Progress percentage for auto-dismiss notifications
-  const getProgressPercentage = () => {
-    if (!duration || isPaused || !remainingTimeRef.current || !startTimeRef.current) return 100;
-    const elapsed = Date.now() - startTimeRef.current;
-    const remaining = remainingTimeRef.current - elapsed;
-    return Math.max(0, (remaining / duration) * 100);
-  };
-
   return (
     <div
       className={`transform transition-all duration-300 ease-in-out pointer-events-auto
@@ -211,7 +248,7 @@ const Notification: React.FC<NotificationProps> = ({
             <div className="h-1 mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 className={`h-full ${typeStyles.progressClass} transition-all duration-100 ease-linear`}
-                style={{ width: `${getProgressPercentage()}%` }}
+                style={{ width: `${progress}%` }}
               />
             </div>
           )}

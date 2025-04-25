@@ -168,7 +168,7 @@ export const formatFileSize = (bytes: number): string => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
 /**
@@ -307,3 +307,11 @@ export const isPDFPasswordProtected = async (pdfData: ArrayBuffer): Promise<bool
     throw error;
   }
 };
+
+/**
+ * Generate a unique ID for a file
+ * @returns Unique ID string
+ */
+export function generateFileId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
+}

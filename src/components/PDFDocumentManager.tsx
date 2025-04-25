@@ -11,6 +11,8 @@ import { PDFFile, removePDFFile } from '../store/slices/pdfSlice';
 import PDFViewer from './PDFViewer';
 import PDFProgressiveView from './PDFProgressiveView';
 import Button from './ui/Button';
+import PDFThumbnailGrid from './PDFThumbnailGrid';
+import { pdfThumbnailService } from '../services/PDFThumbnailService';
 
 // ────────────────────────────────────────────────────────────────────────────────
 // Types
@@ -46,6 +48,9 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
   const [previewMode, setPreviewMode] = useState<boolean>(false);
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [useProgressiveLoading, setUseProgressiveLoading] = useState<boolean>(false);
+  const [pdfPageCount, setPdfPageCount] = useState<number>(0);
+  const [localSelectedPages, setLocalSelectedPages] = useState<number[]>([]);
+  const [isContentVisible, setIsContentVisible] = useState<boolean>(false);
 
   const [standaloneFile, setStandaloneFile] = useState<PDFFile | null>(
     pdfData
@@ -120,7 +125,7 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
         });
       }
     }
-  }, [isStandaloneMode, pdfData?.byteLength, fileName, initialSelectedPages.length]);
+  }, [isStandaloneMode, pdfData?.byteLength, fileName, initialSelectedPages]);
 
   // 2️⃣ Keep the current index valid (Redux mode only)
   useEffect(() => {
@@ -162,6 +167,27 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
       pdfDataRef.current = currentPdf.data;
     }
   }, [currentPdf?.id]);
+  
+  // 5️⃣ Get page count for the current PDF
+  useEffect(() => {
+    const fetchPageCount = async () => {
+      if (!pdfDataRef.current) return;
+      
+      try {
+        const count = await pdfThumbnailService.getPageCount(pdfDataRef.current);
+        setPdfPageCount(count);
+        
+        // Also update the file object if we're in standalone mode
+        if (isStandaloneMode && standaloneFile && standaloneFile.pageCount !== count) {
+          setStandaloneFile(prev => prev ? { ...prev, pageCount: count } : null);
+        }
+      } catch (error) {
+        console.error('Error getting page count:', error);
+      }
+    };
+    
+    fetchPageCount();
+  }, [currentPdf?.id]);
 
   // ──────────────────────────────────────────────────────────────────────────────
   // Handlers
@@ -176,14 +202,14 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
     [isStandaloneMode]
   );
 
-  const handlePreview = (pageNumber: number) => {
+  const handlePreview = useCallback((pageNumber: number) => {
     setPreviewPage(pageNumber);
     setPreviewMode(true);
-  };
+  }, []);
 
-  const handleExitPreview = () => setPreviewMode(false);
+  const handleExitPreview = useCallback(() => setPreviewMode(false), []);
 
-  const updateSelectedPages = (fileId: string, pages: number[]) => {
+  const updateSelectedPages = useCallback((fileId: string, pages: number[]) => {
     setSelectedPages(prev => ({
       ...prev,
       [fileId]: pages
@@ -192,33 +218,33 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
     if (isStandaloneMode && fileId === 'standalone' && onPagesSelected) {
       onPagesSelected(pages);
     }
-  };
+  }, [isStandaloneMode, onPagesSelected]);
 
-  const handlePageToggle = (
-    file: PDFFile,
-    pageNumber: number,
-    selected: boolean
-  ) => {
-    const current = selectedPages[file.id] || [];
-    const next = selected
-      ? [...current, pageNumber]
-      : current.filter(p => p !== pageNumber);
+  const handlePageToggle = useCallback(
+    (file: PDFFile, pageNumber: number, selected: boolean) => {
+      const current = selectedPages[file.id] || [];
+      const next = selected
+        ? [...current, pageNumber]
+        : current.filter(p => p !== pageNumber);
 
-    updateSelectedPages(file.id, next.sort((a, b) => a - b));
-  };
+      updateSelectedPages(file.id, next.sort((a, b) => a - b));
+    },
+    [selectedPages, updateSelectedPages]
+  );
 
-  const handleSelectAllPages = (file: PDFFile) => {
-    if (file.pageCount) {
-      const all = Array.from({ length: file.pageCount }, (_, i) => i + 1);
+  const handleSelectAllPages = useCallback((file: PDFFile) => {
+    const actualPageCount = file.pageCount || pdfPageCount;
+    if (actualPageCount) {
+      const all = Array.from({ length: actualPageCount }, (_, i) => i + 1);
       updateSelectedPages(file.id, all);
     }
-  };
+  }, [updateSelectedPages, pdfPageCount]);
 
-  const handleDeselectAllPages = (file: PDFFile) => {
+  const handleDeselectAllPages = useCallback((file: PDFFile) => {
     updateSelectedPages(file.id, []);
-  };
+  }, [updateSelectedPages]);
 
-  const handleRemovePDF = (fileId: string) => {
+  const handleRemovePDF = useCallback((fileId: string) => {
     if (!isStandaloneMode) {
       dispatch(removePDFFile(fileId));
       setSelectedPages(prev => {
@@ -227,12 +253,12 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
         return next;
       });
     }
-  };
+  }, [dispatch, isStandaloneMode]);
 
   // ──────────────────────────────────────────────────────────────────────────────
   // Rendering helpers
   // ──────────────────────────────────────────────────────────────────────────────
-  const renderContent = () => {
+  const renderContent = useCallback(() => {
     if (!currentPdf || !pdfDataRef.current) {
       return (
         <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
@@ -242,6 +268,7 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
     }
 
     const pdfData = pdfDataRef.current;
+    const actualPageCount = currentPdf.pageCount || pdfPageCount;
 
     if (previewMode) {
       return <PDFViewer pdfData={pdfData} className="h-full" />;
@@ -249,31 +276,47 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
 
     if (useProgressiveLoading) {
       return (
-        <PDFProgressiveView
-          pdfData={pdfData}
-          fileName={currentPdf.name}
-          selectedPages={memoizedSelectedPages}
-          onPageSelect={(page, selected) =>
-            handlePageToggle(currentPdf, page, selected)
-          }
-          onPreview={handlePreview}
-          className="h-full"
-        />
+        <div className="relative h-full">
+          <PDFProgressiveView
+            pdfData={pdfData}
+            fileName={currentPdf.name}
+            thumbnailWidth={150}
+            className="h-full"
+            selectedPages={memoizedSelectedPages}
+            onPageSelect={(pageNumber, selected) => {
+              handlePageToggle(currentPdf, pageNumber, selected);
+            }}
+            onPreview={handlePreview}
+          />
+        </div>
       );
     }
 
+    // Use the new PDFThumbnailGrid for regular (non-progressive) rendering
     return (
-      <PDFViewer
-        pdfData={pdfData}
-        className="h-full"
-        initialSelectedPages={memoizedSelectedPages}
-        onPageSelect={pages => updateSelectedPages(currentPdf.id, pages)}
-        onClose={handleExitPreview}
-        fileName={currentPdf.name}
-        showPageSelection
-      />
+      <div className="relative h-full overflow-auto p-4" style={{ maxHeight: '65vh' }}>
+        <PDFThumbnailGrid
+          pdfData={pdfData}
+          pageCount={actualPageCount}
+          thumbnailWidth={150}
+          selectedPages={memoizedSelectedPages}
+          onPageSelect={(pageNumber, selected) => {
+            handlePageToggle(currentPdf, pageNumber, selected);
+          }}
+          onPagePreview={handlePreview}
+          className="mb-4"
+        />
+      </div>
     );
-  };
+  }, [
+    currentPdf, 
+    handlePageToggle, 
+    handlePreview, 
+    memoizedSelectedPages, 
+    pdfPageCount, 
+    previewMode, 
+    useProgressiveLoading
+  ]);
 
   // ──────────────────────────────────────────────────────────────────────────────
   // JSX
@@ -307,9 +350,9 @@ const PDFDocumentManager: React.FC<PDFDocumentManagerProps> = ({
             <div className="p-2 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-medium">{currentPdf.name}</span>
-                {currentPdf.pageCount ? (
+                {(currentPdf.pageCount || pdfPageCount) ? (
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {currentPdf.pageCount} pages
+                    {currentPdf.pageCount || pdfPageCount} pages
                   </span>
                 ) : null}
               </div>

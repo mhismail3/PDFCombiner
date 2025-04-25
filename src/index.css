@@ -16,3 +16,69 @@ code {
 }
 
 /* Tailwind directives will be added here later */
+
+/* PDF Thumbnail responsive styles */
+:root {
+  --base-thumb-size: 150px;
+  --thumbnail-scale: 1;
+}
+
+.thumbnail-wrapper {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.thumbnail-wrapper:hover {
+  transform: scale(1.03);
+  z-index: 10;
+}
+
+.thumbnail-wrapper:focus-within {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+/* Responsive breakpoints for thumbnails */
+@media (max-width: 768px) {
+  :root {
+    --base-thumb-size: 120px;
+  }
+  
+  .zoom-controls-container {
+    position: sticky;
+    bottom: 0;
+    z-index: 50;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --base-thumb-size: 100px;
+  }
+  
+  .pdf-thumbnail-grid-container .zoom-controls-container {
+    padding: 12px 8px;
+  }
+}
+
+/* Orientation changes */
+@media (orientation: landscape) and (max-width: 900px) {
+  .pdf-thumbnail-grid-container {
+    max-height: 85vh;
+  }
+}
+
+/* Accessibility focus styles */
+.pdf-thumbnail-grid-container button:focus-visible,
+.pdf-thumbnail-grid-container input:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+/* Improved touch targets for mobile */
+@media (pointer: coarse) {
+  .pdf-thumbnail-grid-container button,
+  .zoom-controls-container button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
